@@ -12,6 +12,8 @@ pub fn build(b: *std.build.Builder) void {
     const mode = b.standardReleaseOptions();
 
     const exe = b.addExecutable("monito", "src/main.zig");
+    exe.addPackagePath("tokens", "src/tokens.zig");
+    exe.addPackagePath("utils", "src/utils.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
