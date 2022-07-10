@@ -12,6 +12,7 @@ pub fn build(b: *std.build.Builder) void {
     const mode = b.standardReleaseOptions();
 
     const exe = b.addExecutable("monito", "src/main.zig");
+
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
@@ -25,7 +26,7 @@ pub fn build(b: *std.build.Builder) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const exe_tests = b.addTest("src/main.zig");
+    const exe_tests = b.addTest("src/unit_tests.zig");
     exe_tests.setTarget(target);
     exe_tests.setBuildMode(mode);
 
