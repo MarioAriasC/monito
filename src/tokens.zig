@@ -1,8 +1,10 @@
-const utils = @import("utils");
+const utils = @import("utils.zig");
+const std = @import("std");
+const strEql = utils.strEql;
 
-const TokenType = enum { ILLEGAL, EOF, ASSIGN, EQ, NOT_EQ, IDENT, INT, PLUS, COMMA, SEMICOLON, COLON, MINUS, BANG, SLASH, ASTERISK, LT, GT, LPAREN, RPAREN, LBRACE, RBRACE, LBRACKET, RBRACKET, FUNCTION, LET, TRUE, FALSE, IF, ELSE, RETURN, STRING };
+pub const TokenType = enum { ILLEGAL, EOF, ASSIGN, EQ, NOT_EQ, IDENT, INT, PLUS, COMMA, SEMICOLON, COLON, MINUS, BANG, SLASH, ASTERISK, LT, GT, LPAREN, RPAREN, LBRACE, RBRACE, LBRACKET, RBRACKET, FUNCTION, LET, TRUE, FALSE, IF, ELSE, RETURN, STRING };
 
-pub fn lookupIndent(str: []const u8) TokenType {
+pub fn lookupIdent(str: []const u8) TokenType {
     if (strEql("fn", str)) {
         return TokenType.FUNCTION;
     }
@@ -18,14 +20,29 @@ pub fn lookupIndent(str: []const u8) TokenType {
     if (strEql("if", str)) {
         return TokenType.IF;
     }
-    if (strEql("ELSE", str)) {
+    if (strEql("else", str)) {
         return TokenType.ELSE;
     }
-    if (strEql("RETURN", str)) {
+    if (strEql("return", str)) {
         return TokenType.RETURN;
     }
 
-    return TokenType.Ident;
+    return TokenType.IDENT;
 }
 
-const Token = struct { type: TokenType, literal: []const u8 };
+pub const Token = struct {
+    tokenType: TokenType,
+    literal: []const u8,
+
+    pub fn init(allocator: std.mem.Allocator, tokenType: TokenType, literal: []const u8) Token {
+        var token = allocator.create(Token) catch unreachable;
+        token.tokenType = tokenType;
+        token.literal = literal;
+        return token.*;
+    }
+
+    pub fn initWithChar(allocator: std.mem.Allocator, tokenType: TokenType, literal: u8) Token {
+        var str = std.fmt.allocPrint(allocator, "{c}", .{literal}) catch unreachable;
+        return Token.init(allocator, tokenType, str);
+    }
+};
