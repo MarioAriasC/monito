@@ -14,12 +14,14 @@ pub const Expression = union(enum) {
     infixExpression: InfixExpression,
     identifier: Identifier,
     integerLiteral: IntegerLiteral,
+    booleanLiteral: BooleanLiteral,
 
     pub fn token(self: Self) Token {
         switch (self) {
             .identifier => |identifier| return identifier.token,
             .infixExpression => |expression| return expression.token,
             .integerLiteral => |literal| return literal.token,
+            .booleanLiteral => |literal| return literal.token,
         }
     }
 
@@ -32,6 +34,7 @@ pub const Expression = union(enum) {
             .identifier => |identifier| return identifier.toStringInternal(),
             .infixExpression => |expression| return expression.toStringInternal(allocator),
             .integerLiteral => |literal| return literal.toStringInternal(),
+            .booleanLiteral => |literal| return literal.toStringInternal(),
         }
     }
 };
@@ -145,15 +148,29 @@ pub const IntegerLiteral = struct {
         return self.token.literal;
     }
 
-    pub fn toString(self: *anyopaque, allocator: std.mem.Allocator) []const u8 {
-        _ = allocator;
-        const this: *Self = @ptrCast(@alignCast(self));
-        std.debug.print("$from the toString implementation: {s}\n", .{this.token.literal});
-        return this.toStringInternal();
+    pub fn asExpression(self: Self) Expression {
+        return Expression{ .integerLiteral = self };
+    }
+};
+
+pub const BooleanLiteral = struct {
+    const Self = @This();
+    token: Token,
+    value: bool,
+
+    pub fn init(allocator: std.mem.Allocator, token: Token, value: bool) Self {
+        var self = allocator.create(Self) catch unreachable;
+        self.token = token;
+        self.value = value;
+        return self.*;
+    }
+
+    pub fn toStringInternal(self: Self) []const u8 {
+        return self.token.literal;
     }
 
     pub fn asExpression(self: Self) Expression {
-        return Expression{ .integerLiteral = self };
+        return Expression{ .booleanLiteral = self };
     }
 };
 
@@ -263,9 +280,9 @@ test "casting back and for with enums" {
     const integer_literal = IntegerLiteral.init(allocator, Token.init(allocator, TokenType.INT, "5"), 5);
     const expression = integer_literal.asExpression();
     const original = expression.integerLiteral;
-    print("from literal :{d}\n", .{integer_literal.value});
-    print("from original :{d}\n", .{original.value});
-    print("{s}\n", .{expression.toString(allocator)});
+    // print("from literal :{d}\n", .{integer_literal.value});
+    // print("from original :{d}\n", .{original.value});
+    // print("{s}\n", .{expression.toString(allocator)});
     try expect(integer_literal.value == 5);
     try expect(original.value == 5);
 }
@@ -279,18 +296,21 @@ test "casting back and for with nested enums" {
     const integer_literal = IntegerLiteral.init(allocator, Token.init(allocator, TokenType.INT, "5"), 5);
     const identifier = Identifier.init(allocator, Token.init(allocator, TokenType.IDENT, "x"), "x");
     const let_statement = LetStatement.init(allocator, Token.init(allocator, TokenType.LET, "let"), identifier, integer_literal.asExpression());
-    print("let_statement :{any}\n", .{let_statement});
-    print("let_statement: {s}\n", .{let_statement.toStringInternal(allocator)});
+    // print("let_statement :{any}\n", .{let_statement});
+    // print("let_statement: {s}\n", .{let_statement.toStringInternal(allocator)});
     const statement = let_statement.asStatement();
-    print("statement:: {any}\n", .{statement});
-    print("statement:: {s}\n", .{statement.toString(allocator)});
+    // print("statement:: {any}\n", .{statement});
+    // print("statement:: {s}\n", .{statement.toString(allocator)});
     const let_statement_casted = statement.letStatement;
-    print("casted: {any}\n", .{let_statement_casted});
-    print("casted: {s}\n", .{let_statement_casted.toStringInternal(allocator)});
-    print("value: {any}\n", .{let_statement_casted.value});
-    if (let_statement_casted.value) |value| {
-        print("value: {any}\n", .{value});
-    } else {
-        print("value is null\n", .{});
-    }
+    _ = let_statement_casted;
+
+    try expect(utils.strEql(statement.tokenLiteral(), "let"));
+    // print("casted: {any}\n", .{let_statement_casted});
+    // print("casted: {s}\n", .{let_statement_casted.toStringInternal(allocator)});
+    // print("value: {any}\n", .{let_statement_casted.value});
+    // if (let_statement_casted.value) |value| {
+    // print("value: {any}\n", .{value});
+    // } else {
+    // print("value is null\n", .{});
+    // }
 }

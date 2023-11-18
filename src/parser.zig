@@ -91,7 +91,7 @@ pub const Parser = struct {
         self.nextToken();
 
         var value = self.parseExpression(Precedence.LOWEST);
-        print("value from parseLetStatement {any}\n", .{value});
+        // print("value from parseLetStatement {any}\n", .{value});
 
         // TODO add setting the name for function literral
 
@@ -147,6 +147,8 @@ pub const Parser = struct {
         return switch (tokenType) {
             .INT => Self.parseIntegerLiteral,
             .IDENT => Self.parseIdentifier,
+            .TRUE => Self.parseBooleanLiteral,
+            .FALSE => Self.parseBooleanLiteral,
             else => null,
         };
     }
@@ -164,13 +166,17 @@ pub const Parser = struct {
 
     fn parseIntegerLiteral(self: *Self) ?Expression {
         const token = self.curToken;
-        print("token Literal = {s}\n", .{token.literal});
+        // print("token Literal = {s}\n", .{token.literal});
         const value = std.fmt.parseInt(i64, token.literal, 10) catch {
             self.errors.append(std.fmt.allocPrint(self.allocator, "could not parse {s} as integer", .{token.literal}) catch unreachable) catch unreachable;
             return null;
         };
-        print("value after parsing:{}\n", .{value});
+        // print("value after parsing:{}\n", .{value});
         return ast.IntegerLiteral.init(self.allocator, token, value).asExpression();
+    }
+
+    fn parseBooleanLiteral(self: *Self) ?Expression {
+        return ast.BooleanLiteral.init(self.allocator, self.curToken, self.curTokenIs(TokenType.TRUE)).asExpression();
     }
 
     fn parseInfixExpression(self: *Self, left: ?Expression) ?Expression {
@@ -205,6 +211,10 @@ pub const Parser = struct {
 
     fn peekTokenIs(self: *Self, tokenType: TokenType) bool {
         return self.peekToken.tokenType == tokenType;
+    }
+
+    fn curTokenIs(self: *Self, tokenType: TokenType) bool {
+        return self.curToken.tokenType == tokenType;
     }
 
     fn peekPrecedence(self: Self) Precedence {
@@ -251,19 +261,19 @@ test "let statements" {
     const allocator = arena.allocator();
 
     const TestCase = utils.Tuple3([]const u8, []const u8, Payload);
-    const expecteds = [_]TestCase{TestCase{ .a = "let x = 5;", .b = "x", .c = Payload{ .int = 5 } }};
+    const expecteds = [_]TestCase{ TestCase{ .a = "let x = 5;", .b = "x", .c = Payload{ .int = 5 } }, TestCase{ .a = "let y = true;", .b = "y", .c = Payload{ .boolean = true } } };
     for (expecteds) |expected| {
         var input = expected.a;
         //print("input: {s}\n", .{input});
         //print("expected: {any}\n", .{expected});
         var program = createProgram(input, allocator);
-        print("program = {any}\n", .{program});
+        // print("program = {any}\n", .{program});
         countStatements(1, program) catch unreachable;
 
         const statement = program.statements[0];
         const letStatement = testLetStatement(statement, expected.b, allocator) catch unreachable;
         const value = letStatement.value;
-        testLiteralExpression(value.*, expected.c, allocator) catch unreachable;
+        testLiteralExpression(value, expected.c, allocator) catch unreachable;
     }
 }
 
@@ -276,18 +286,20 @@ fn testLiteralExpression(expression: ?ast.Expression, expectedValue: Payload, al
 }
 
 fn testLongLiteral(expression: ?ast.Expression, int: i64, allocator: std.mem.Allocator) !void {
+    _ = allocator;
     const notNull = expression orelse unreachable;
-    print("notNull ={any}\n", .{notNull});
-    print("notNull.toString = {s}\n", .{notNull.toString(allocator)});
+    // print("notNull ={any}\n", .{notNull});
+    // print("notNull.toString = {s}\n", .{notNull.toString(allocator)});
     const literal = notNull.integerLiteral;
-    print("{d}\n", .{literal.value});
-    print("{d}\n", .{int});
+    // print("literal.value: {d}\n", .{literal.value});
+    // print("int: {d}\n", .{int});
     try expect(literal.value == int);
 }
 
 fn testBooleanLiteral(expression: ?ast.Expression, b: bool) !void {
-    _ = expression;
-    _ = b;
+    const notNull = expression orelse unreachable;
+    const literal = notNull.booleanLiteral;
+    try expect(literal.value == b);
 }
 
 fn testIdentifier(expression: ?ast.Expression, string: []const u8) !void {
@@ -296,20 +308,21 @@ fn testIdentifier(expression: ?ast.Expression, string: []const u8) !void {
 }
 
 fn testLetStatement(statement: Statement, expectedIdentifier: []const u8, allocator: std.mem.Allocator) !ast.LetStatement {
-    print("statement = {any}\n", .{statement});
+    _ = allocator;
+    // print("statement = {any}\n", .{statement});
     try expect(utils.strEql("let", statement.tokenLiteral()));
-    print("token = ${any}\n", .{statement.token()});
+    // print("token = ${any}\n", .{statement.token()});
     const letStatement = statement.letStatement;
-    print("letStatement = ${any}\n", .{letStatement});
+    // print("letStatement = ${any}\n", .{letStatement});
     //print("TypeOf {any}\n", .{@TypeOf(letStatement)});
-    if (letStatement.value.*) |value| {
-        print("value = {any}\n", .{value});
-        print("letStatement.value.toString = {s}\n", .{value.toString(allocator)});
-    } else {
-        print("value is null\n", .{});
-    }
+    // if (letStatement.value) |value| {
+    // print("value = {any}\n", .{value});
+    // print("letStatement.value.toString = {s}\n", .{value.toString(allocator)});
+    // } else {
+    // print("value is null\n", .{});
+    // }
     //const letStatement: *ast.LetStatement = @ptrCast(@alignCast(@constCast(&statement.impl)));
-    print("letStatement.name.value = {s}\n", .{letStatement.name.value});
+    // print("letStatement.name.value = {s}\n", .{letStatement.name.value});
     try expect(utils.strEql(expectedIdentifier, letStatement.name.value));
     try expect(utils.strEql(expectedIdentifier, letStatement.name.asExpression().tokenLiteral()));
     return letStatement;
