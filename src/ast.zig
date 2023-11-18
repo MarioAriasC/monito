@@ -132,16 +132,20 @@ pub const InfixExpression = struct {
     }
 };
 
+fn literalInit(comptime T: type, comptime V: type, allocator: std.mem.Allocator, token: Token, value: V) T {
+    var self = allocator.create(T) catch unreachable;
+    self.token = token;
+    self.value = value;
+    return self.*;
+}
+
 pub const IntegerLiteral = struct {
     const Self = @This();
     token: Token,
     value: i64,
 
     pub fn init(allocator: std.mem.Allocator, token: Token, value: i64) Self {
-        var self = allocator.create(Self) catch unreachable;
-        self.token = token;
-        self.value = value;
-        return self.*;
+        return literalInit(Self, i64, allocator, token, value);
     }
 
     pub fn toStringInternal(self: Self) []const u8 {
@@ -159,10 +163,7 @@ pub const BooleanLiteral = struct {
     value: bool,
 
     pub fn init(allocator: std.mem.Allocator, token: Token, value: bool) Self {
-        var self = allocator.create(Self) catch unreachable;
-        self.token = token;
-        self.value = value;
-        return self.*;
+        return literalInit(Self, bool, allocator, token, value);
     }
 
     pub fn toStringInternal(self: Self) []const u8 {
@@ -280,9 +281,7 @@ test "casting back and for with enums" {
     const integer_literal = IntegerLiteral.init(allocator, Token.init(allocator, TokenType.INT, "5"), 5);
     const expression = integer_literal.asExpression();
     const original = expression.integerLiteral;
-    // print("from literal :{d}\n", .{integer_literal.value});
-    // print("from original :{d}\n", .{original.value});
-    // print("{s}\n", .{expression.toString(allocator)});
+
     try expect(integer_literal.value == 5);
     try expect(original.value == 5);
 }
@@ -296,21 +295,11 @@ test "casting back and for with nested enums" {
     const integer_literal = IntegerLiteral.init(allocator, Token.init(allocator, TokenType.INT, "5"), 5);
     const identifier = Identifier.init(allocator, Token.init(allocator, TokenType.IDENT, "x"), "x");
     const let_statement = LetStatement.init(allocator, Token.init(allocator, TokenType.LET, "let"), identifier, integer_literal.asExpression());
-    // print("let_statement :{any}\n", .{let_statement});
-    // print("let_statement: {s}\n", .{let_statement.toStringInternal(allocator)});
+
     const statement = let_statement.asStatement();
-    // print("statement:: {any}\n", .{statement});
-    // print("statement:: {s}\n", .{statement.toString(allocator)});
+
     const let_statement_casted = statement.letStatement;
     _ = let_statement_casted;
 
     try expect(utils.strEql(statement.tokenLiteral(), "let"));
-    // print("casted: {any}\n", .{let_statement_casted});
-    // print("casted: {s}\n", .{let_statement_casted.toStringInternal(allocator)});
-    // print("value: {any}\n", .{let_statement_casted.value});
-    // if (let_statement_casted.value) |value| {
-    // print("value: {any}\n", .{value});
-    // } else {
-    // print("value is null\n", .{});
-    // }
 }
