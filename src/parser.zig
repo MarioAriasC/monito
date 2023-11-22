@@ -318,6 +318,22 @@ test "identifier" {
     try expect(utils.strEql("foobar", expression.tokenLiteral()));
 }
 
+test "integer" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const input = "5;";
+
+    const program = createProgram(input, allocator);
+    countStatements(1, program) catch unreachable;
+
+    const statement = program.statements[0];
+    const expressionStatement = statement.expressionStatement;
+    try testLongLiteral(expressionStatement.expression, 5, allocator);
+}
+
 fn testLiteralExpression(expression: ?ast.Expression, expectedValue: Payload, allocator: std.mem.Allocator) !void {
     try switch (expectedValue) {
         .int => |int| testLongLiteral(expression, int, allocator),
