@@ -212,17 +212,17 @@ pub const LetStatement = struct {
 pub const ExpressionStatement = struct {
     const Self = @This();
     token: Token,
-    expression: *const ?Expression,
+    expression: ?Expression,
 
     pub fn init(allocator: std.mem.Allocator, token: Token, expression: ?Expression) Self {
         var self = allocator.create(Self) catch unreachable;
         self.token = token;
-        self.expression = &expression;
+        self.expression = expression;
         return self.*;
     }
 
     pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
-        if (self.expression.*) |expression| {
+        if (self.expression) |expression| {
             return expression.toString(allocator);
         } else {
             return "";
