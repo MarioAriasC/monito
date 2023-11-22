@@ -242,18 +242,18 @@ pub const ExpressionStatement = struct {
 pub const ReturnStatement = struct {
     const Self = @This();
     token: Token,
-    returnValue: *const ?Expression,
+    returnValue: ?Expression,
 
     pub fn init(allocator: std.mem.Allocator, token: Token, returnValue: ?Expression) Self {
         var statement = allocator.create(Self) catch unreachable;
         statement.token = token;
-        statement.returnValue = &returnValue;
+        statement.returnValue = returnValue;
         return statement.*;
     }
 
     pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
         const returnStr = blk: {
-            if (self.returnValue.*) |returnValue| {
+            if (self.returnValue) |returnValue| {
                 break :blk returnValue.toString(allocator);
             } else {
                 break :blk "";

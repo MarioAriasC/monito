@@ -263,15 +263,39 @@ test "let statements" {
     const TestCase = utils.Tuple3([]const u8, []const u8, Payload);
     const expecteds = [_]TestCase{ TestCase{ .a = "let x = 5;", .b = "x", .c = Payload{ .int = 5 } }, TestCase{ .a = "let y = true;", .b = "y", .c = Payload{ .boolean = true } }, TestCase{ .a = "let foobar = y;", .b = "foobar", .c = Payload{ .string = "y" } } };
     for (expecteds) |expected| {
-        var input = expected.a;
+        const input = expected.a;
         var program = createProgram(input, allocator);
 
         countStatements(1, program) catch unreachable;
 
         const statement = program.statements[0];
-        const letStatement = testLetStatement(statement, expected.b, allocator) catch unreachable;
+        testLetStatement(statement, expected.b, allocator) catch unreachable;
+        const letStatement = statement.letStatement;
         const value = letStatement.value;
         testLiteralExpression(value, expected.c, allocator) catch unreachable;
+    }
+}
+
+test "return statements" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const TestCase = utils.Tuple2([]const u8, Payload);
+
+    const expecteds = [_]TestCase{ TestCase{ .a = "return 5;", .b = Payload{ .int = 5 } }, TestCase{ .a = "return true;", .b = Payload{ .boolean = true } }, TestCase{ .a = "return foobar;", .b = Payload{ .string = "foobar" } } };
+
+    for (expecteds) |expected| {
+        var input = expected.a;
+        var program = createProgram(input, allocator);
+
+        countStatements(1, program) catch unreachable;
+        const statement = program.statements[0];
+        const returnStatement = statement.returnStatement;
+        const value = returnStatement.returnValue;
+        try expect(utils.strEql("return", statement.tokenLiteral()));
+        testLiteralExpression(value, expected.b, allocator) catch unreachable;
     }
 }
 
@@ -303,11 +327,10 @@ fn testIdentifier(expression: ?ast.Expression, string: []const u8) !void {
     try expect(utils.strEql(notNull.tokenLiteral(), string));
 }
 
-fn testLetStatement(statement: Statement, expectedIdentifier: []const u8, allocator: std.mem.Allocator) !ast.LetStatement {
+fn testLetStatement(statement: Statement, expectedIdentifier: []const u8, allocator: std.mem.Allocator) !void {
     _ = allocator;
     try expect(utils.strEql("let", statement.tokenLiteral()));
     const letStatement = statement.letStatement;
     try expect(utils.strEql(expectedIdentifier, letStatement.name.value));
     try expect(utils.strEql(expectedIdentifier, letStatement.name.asExpression().tokenLiteral()));
-    return letStatement;
 }
