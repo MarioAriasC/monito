@@ -91,7 +91,6 @@ pub const Parser = struct {
         self.nextToken();
 
         var value = self.parseExpression(Precedence.LOWEST);
-        // print("value from parseLetStatement {any}\n", .{value});
 
         // TODO add setting the name for function literral
 
@@ -158,6 +157,10 @@ pub const Parser = struct {
     fn infixParser(tokenType: TokenType) ?InfixParser {
         return switch (tokenType) {
             .EQ => Self.parseInfixExpression,
+            .PLUS => Self.parseInfixExpression,
+            .MINUS => Self.parseInfixExpression,
+            .ASTERISK => Self.parseInfixExpression,
+            .SLASH => Self.parseInfixExpression,
             else => null,
         };
     }
@@ -181,23 +184,24 @@ pub const Parser = struct {
         return ast.BooleanLiteral.init(self.allocator, self.curToken, self.curTokenIs(TokenType.TRUE)).asExpression();
     }
 
+    fn heapExpression(allocator: std.mem.Allocator, expression: ?Expression) ?*const Expression {
+        if (expression) |ex| {
+            const n = allocator.create(Expression) catch return null;
+            n.* = ex;
+            return n;
+        } else {
+            return null;
+        }
+    }
+
     fn parsePrefixExpression(self: *Self) ?Expression {
         const token = self.curToken;
         const operator = token.literal;
         self.nextToken();
 
         const right = self.parseExpression(Precedence.PREFIX);
-        std.debug.print("before pointer: {any}\n", .{right});
-        const value = blk: {
-            if (right) |r| {
-                break :blk &r;
-            } else {
-                break :blk null;
-            }
-        };
-        std.debug.print("parse prefix expression value:{any}->ptr:{*}\n", .{ value, value });
-        const prefix = ast.PrefixExpression.init(self.allocator, token, operator, value).asExpression();
-        print("prefix => {any}\n", .{prefix});
+
+        const prefix = ast.PrefixExpression.init(self.allocator, token, operator, heapExpression(self.allocator, right)).asExpression();
         return prefix;
     }
 
@@ -207,8 +211,9 @@ pub const Parser = struct {
 
         const precedence = self.curPrecedence();
         self.nextToken();
+
         const right = self.parseExpression(precedence);
-        return ast.InfixExpression.init(self.allocator, token, left, operator, right).asExpression();
+        return ast.InfixExpression.init(self.allocator, token, heapExpression(self.allocator, left), operator, heapExpression(self.allocator, right)).asExpression();
     }
 
     fn parseExpression(self: *Self, prec: Precedence) ?Expression {
@@ -218,7 +223,6 @@ pub const Parser = struct {
         };
 
         var left = prefix(self);
-        print("left => {any}\n", .{left});
 
         while (!self.peekTokenIs(TokenType.SEMICOLON) and @intFromEnum(prec) < @intFromEnum(self.peekPrecedence())) {
             const infix = Self.infixParser(self.peekToken.tokenType) orelse {
@@ -295,7 +299,7 @@ test "let statements" {
         testLetStatement(statement, expected.b, allocator) catch unreachable;
         const letStatement = statement.letStatement;
         const value = letStatement.value;
-        testLiteralExpression(value, expected.c, allocator) catch unreachable;
+        testLiteralExpression(value, expected.c) catch unreachable;
     }
 }
 
@@ -318,7 +322,7 @@ test "return statements" {
         const returnStatement = statement.returnStatement;
         const value = returnStatement.returnValue;
         try expect(utils.strEql("return", statement.tokenLiteral()));
-        testLiteralExpression(value, expected.b, allocator) catch unreachable;
+        testLiteralExpression(value, expected.b) catch unreachable;
     }
 }
 
@@ -354,7 +358,7 @@ test "integer literals" {
 
     const statement = program.statements[0];
     const expressionStatement = statement.expressionStatement;
-    try testLongLiteral(expressionStatement.expression, 5, allocator);
+    try testLongLiteral(expressionStatement.expression, 5);
 }
 
 test "parsing prefix expressions" {
@@ -364,7 +368,7 @@ test "parsing prefix expressions" {
     const allocator = arena.allocator();
 
     const TestCase = utils.Tuple3([]const u8, []const u8, Payload);
-    const expecteds = [_]TestCase{TestCase{ .a = "!5", .b = "!", .c = Payload{ .int = 5 } }};
+    const expecteds = [_]TestCase{ TestCase{ .a = "!5", .b = "!", .c = Payload{ .int = 5 } }, TestCase{ .a = "-15", .b = "-", .c = Payload{ .int = 15 } }, TestCase{ .a = "!true", .b = "!", .c = Payload{ .boolean = true } }, TestCase{ .a = "!false", .b = "!", .c = Payload{ .boolean = false } } };
 
     for (expecteds) |expected| {
         var input = expected.a;
@@ -373,28 +377,61 @@ test "parsing prefix expressions" {
         const statement = program.statements[0];
         const expression = statement.expressionStatement.expression orelse unreachable;
         const prefix = expression.prefixExpression;
-        print("prefix {any}\n", .{prefix});
+
         try expect(utils.strEql(expected.b, prefix.operator));
         if (prefix.right) |right| {
-            print("before testing :{any}\n", .{right});
-            const prefixE: *ast.Expression = @constCast(right);
-            print("casted {any}\n", .{prefixE});
-            testLiteralExpression(right.*, expected.c, allocator) catch unreachable;
+            testLiteralExpression(right.*, expected.c) catch unreachable;
+        } else {
+            try expect(false);
         }
     }
 }
 
-fn testLiteralExpression(expression: ?ast.Expression, expectedValue: Payload, allocator: std.mem.Allocator) !void {
+test "parsing infix expression" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const TestCase = utils.Tuple4([]const u8, Payload, []const u8, Payload);
+
+    const expecteds = [_]TestCase{ TestCase{ .a = "5 + 5;", .b = Payload{ .int = 5 }, .c = "+", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 - 5;", .b = Payload{ .int = 5 }, .c = "-", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 * 5;", .b = Payload{ .int = 5 }, .c = "*", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 / 5;", .b = Payload{ .int = 5 }, .c = "/", .d = Payload{ .int = 5 } } };
+
+    for (expecteds) |expected| {
+        const input = expected.a;
+        const program = createProgram(input, allocator);
+        countStatements(1, program) catch unreachable;
+        const statement = program.statements[0];
+        const expression = statement.expressionStatement.expression orelse unreachable;
+        const infix = expression.infixExpression;
+        testInfixExpression(infix, expected.b, expected.c, expected.d) catch unreachable;
+    }
+}
+
+fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []const u8, right: Payload) !void {
+    if (infix.left) |l| {
+        testLiteralExpression(l.*, left) catch unreachable;
+    } else {
+        try expect(false);
+    }
+
+    try expect(utils.strEql(operator, infix.operator));
+    if (infix.right) |r| {
+        testLiteralExpression(r.*, right) catch unreachable;
+    } else {
+        try expect(false);
+    }
+}
+
+fn testLiteralExpression(expression: ?ast.Expression, expectedValue: Payload) !void {
     try switch (expectedValue) {
-        .int => |int| testLongLiteral(expression, int, allocator),
+        .int => |int| testLongLiteral(expression, int),
         .boolean => |b| testBooleanLiteral(expression, b),
         .string => |string| testIdentifier(expression, string),
     };
 }
 
-fn testLongLiteral(expression: ?ast.Expression, int: i64, allocator: std.mem.Allocator) !void {
-    _ = allocator;
-    std.debug.print("test long literal :{any}\n", .{expression});
+fn testLongLiteral(expression: ?ast.Expression, int: i64) !void {
     const notNull = expression orelse unreachable;
     const literal = notNull.integerLiteral;
     try expect(literal.value == int);

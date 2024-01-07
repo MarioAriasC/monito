@@ -103,16 +103,16 @@ pub const Identifier = struct {
 pub const InfixExpression = struct {
     const Self = @This();
     token: Token,
-    left: *const ?Expression,
+    left: ?*const Expression,
     operator: []const u8,
-    right: *const ?Expression,
+    right: ?*const Expression,
 
-    pub fn init(allocator: std.mem.Allocator, token: Token, left: ?Expression, operator: []const u8, right: ?Expression) Self {
+    pub fn init(allocator: std.mem.Allocator, token: Token, left: ?*const Expression, operator: []const u8, right: ?*const Expression) Self {
         var self = allocator.create(Self) catch unreachable;
         self.token = token;
-        self.left = &left;
+        self.left = left;
         self.operator = operator;
-        self.right = &right;
+        self.right = right;
         return self.*;
     }
 
@@ -316,26 +316,20 @@ test "casting back and for with nested enums" {
     try expect(utils.strEql(statement.tokenLiteral(), "let"));
 }
 
-test "extracting value from a prefix expression" {
-    const test_allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(test_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    const integer_literal = IntegerLiteral.init(allocator, Token.init(allocator, TokenType.INT, "5"), 5);
-    const prefix = PrefixExpression.init(allocator, Token.init(allocator, TokenType.MINUS, "-"), "-", &integer_literal.asExpression());
-
-    const statement = ExpressionStatement.init(allocator, Token.init(allocator, TokenType.MINUS, "-"), prefix.asExpression());
-
-    const expression = prefix.asExpression();
-    const prefix2 = expression.prefixExpression;
-    std.debug.print("{any}\n", .{prefix2});
-    std.debug.print("{any}\n", .{prefix2.right});
-    const right = prefix.right;
-    if (right) |r| {
-        print("from pointer {any}\n", .{r.*});
-    }
-
-    print("{any}\n", .{statement});
-    print("{any}\n", .{statement.expression});
-}
+// test "extracting value from a prefix expression" {
+//     const test_allocator = std.testing.allocator;
+//     var arena = std.heap.ArenaAllocator.init(test_allocator);
+//     defer arena.deinit();
+//     const allocator = arena.allocator();
+//
+//     const integer_literal = IntegerLiteral.init(allocator, Token.init(allocator, TokenType.INT, "5"), 5);
+//     const prefix = PrefixExpression.init(allocator, Token.init(allocator, TokenType.MINUS, "-"), "-", &integer_literal.asExpression());
+//
+//     const statement = ExpressionStatement.init(allocator, Token.init(allocator, TokenType.MINUS, "-"), prefix.asExpression());
+//
+//     const expression = prefix.asExpression();
+//     const prefix2 = expression.prefixExpression;
+//
+//     const right = prefix.right;
+//
+// }

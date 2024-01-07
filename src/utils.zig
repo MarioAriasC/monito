@@ -24,3 +24,7 @@ pub fn Tuple2(comptime A: type, comptime B: type) type {
 pub fn Tuple3(comptime A: type, comptime B: type, comptime C: type) type {
     return struct { a: A, b: B, c: C };
 }
+
+pub fn Tuple4(comptime A: type, comptime B: type, comptime C: type, comptime D: type) type {
+    return struct { a: A, b: B, c: C, d: D };
+}
