@@ -15,13 +15,16 @@ pub const Expression = union(enum) {
     identifier: Identifier,
     integerLiteral: IntegerLiteral,
     booleanLiteral: BooleanLiteral,
+    prefixExpression: PrefixExpression,
 
     pub fn token(self: Self) Token {
         switch (self) {
-            .identifier => |identifier| return identifier.token,
-            .infixExpression => |expression| return expression.token,
-            .integerLiteral => |literal| return literal.token,
-            .booleanLiteral => |literal| return literal.token,
+            // .identifier => |identifier| return identifier.token,
+            // .infixExpression => |expression| return expression.token,
+            // .integerLiteral => |literal| return literal.token,
+            // .booleanLiteral => |literal| return literal.token,
+            // .prefixExpression => |expression| return expression.token,
+            inline else => |impl| return impl.token,
         }
     }
 
@@ -35,6 +38,7 @@ pub const Expression = union(enum) {
             .infixExpression => |expression| return expression.toStringInternal(allocator),
             .integerLiteral => |literal| return literal.toStringInternal(),
             .booleanLiteral => |literal| return literal.toStringInternal(),
+            .prefixExpression => |expression| return expression.toStringInternal(allocator),
         }
     }
 };
@@ -91,12 +95,6 @@ pub const Identifier = struct {
         return self.token.literal;
     }
 
-    pub fn toString(self: *anyopaque, allocator: std.mem.Allocator) []const u8 {
-        _ = allocator;
-        const this: *Self = @ptrCast(@alignCast(self));
-        return this.toStringInternal();
-    }
-
     pub fn asExpression(self: Self) Expression {
         return Expression{ .identifier = self };
     }
@@ -120,11 +118,6 @@ pub const InfixExpression = struct {
 
     pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
         return std.fmt.allocPrint(allocator, "({any} {any} {any})", .{ self.left, self.operator, self.right }) catch unreachable;
-    }
-
-    pub fn toString(self: *anyopaque, allocator: std.mem.Allocator) []const u8 {
-        const this: *Self = @ptrCast(@alignCast(self));
-        return this.toStringInternal(allocator);
     }
 
     pub fn asExpression(self: Self) Expression {
@@ -175,6 +168,39 @@ pub const BooleanLiteral = struct {
     }
 };
 
+pub const PrefixExpression = struct {
+    const Self = @This();
+    token: Token,
+    operator: []const u8,
+    right: ?*const Expression,
+
+    pub fn init(allocator: std.mem.Allocator, token: Token, operator: []const u8, right: ?*const Expression) Self {
+        // _ = allocator;
+        // return PrefixExpression{ .token = token, .operator = operator, .right = right };
+        var self = allocator.create(Self) catch unreachable;
+        self.token = token;
+        self.operator = operator;
+        self.right = right;
+        return self.*;
+    }
+
+    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+        const rightStr = blk: {
+            if (self.right) |right| {
+                break :blk right.toString(allocator);
+            } else {
+                break :blk "null";
+            }
+        };
+
+        return std.fmt.allocPrint(allocator, "({s}{s})", .{ self.operator, rightStr });
+    }
+
+    pub fn asExpression(self: Self) Expression {
+        return Expression{ .prefixExpression = self };
+    }
+};
+
 pub const LetStatement = struct {
     const Self = @This();
     token: Token,
@@ -198,10 +224,6 @@ pub const LetStatement = struct {
             }
         };
         return std.fmt.allocPrint(allocator, "{s} {s} = {s}", .{ self.token.literal, self.name.toStringInternal(), valueStr }) catch unreachable;
-    }
-    pub fn toString(self: *anyopaque, allocator: std.mem.Allocator) []const u8 {
-        const this: *Self = @ptrCast(@alignCast(self));
-        return this.toStringInternal(allocator);
     }
 
     pub fn asStatement(self: Self) Statement {
@@ -227,11 +249,6 @@ pub const ExpressionStatement = struct {
         } else {
             return "";
         }
-    }
-
-    fn toString(self: *anyopaque, allocator: std.mem.Allocator) []const u8 {
-        const this: *Self = @ptrCast(@alignCast(self));
-        return this.toStringInternal(allocator);
     }
 
     pub fn asStatement(self: Self) Statement {
@@ -260,11 +277,6 @@ pub const ReturnStatement = struct {
             }
         };
         return std.fmt.allocPrint(allocator, "{s} {s}", .{ self.token.literal, returnStr }) catch unreachable;
-    }
-
-    pub fn toString(self: *anyopaque, allocator: std.mem.Allocator) []const u8 {
-        const this: *Self = @ptrCast(@alignCast(self));
-        return this.toStringInternal(allocator);
     }
 
     pub fn asStatement(self: Self) Statement {
@@ -302,4 +314,28 @@ test "casting back and for with nested enums" {
     _ = let_statement_casted;
 
     try expect(utils.strEql(statement.tokenLiteral(), "let"));
+}
+
+test "extracting value from a prefix expression" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const integer_literal = IntegerLiteral.init(allocator, Token.init(allocator, TokenType.INT, "5"), 5);
+    const prefix = PrefixExpression.init(allocator, Token.init(allocator, TokenType.MINUS, "-"), "-", &integer_literal.asExpression());
+
+    const statement = ExpressionStatement.init(allocator, Token.init(allocator, TokenType.MINUS, "-"), prefix.asExpression());
+
+    const expression = prefix.asExpression();
+    const prefix2 = expression.prefixExpression;
+    std.debug.print("{any}\n", .{prefix2});
+    std.debug.print("{any}\n", .{prefix2.right});
+    const right = prefix.right;
+    if (right) |r| {
+        print("from pointer {any}\n", .{r.*});
+    }
+
+    print("{any}\n", .{statement});
+    print("{any}\n", .{statement.expression});
 }

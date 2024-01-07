@@ -149,6 +149,8 @@ pub const Parser = struct {
             .IDENT => Self.parseIdentifier,
             .TRUE => Self.parseBooleanLiteral,
             .FALSE => Self.parseBooleanLiteral,
+            .BANG => Self.parsePrefixExpression,
+            .MINUS => Self.parsePrefixExpression,
             else => null,
         };
     }
@@ -179,6 +181,26 @@ pub const Parser = struct {
         return ast.BooleanLiteral.init(self.allocator, self.curToken, self.curTokenIs(TokenType.TRUE)).asExpression();
     }
 
+    fn parsePrefixExpression(self: *Self) ?Expression {
+        const token = self.curToken;
+        const operator = token.literal;
+        self.nextToken();
+
+        const right = self.parseExpression(Precedence.PREFIX);
+        std.debug.print("before pointer: {any}\n", .{right});
+        const value = blk: {
+            if (right) |r| {
+                break :blk &r;
+            } else {
+                break :blk null;
+            }
+        };
+        std.debug.print("parse prefix expression value:{any}->ptr:{*}\n", .{ value, value });
+        const prefix = ast.PrefixExpression.init(self.allocator, token, operator, value).asExpression();
+        print("prefix => {any}\n", .{prefix});
+        return prefix;
+    }
+
     fn parseInfixExpression(self: *Self, left: ?Expression) ?Expression {
         const token = self.curToken;
         const operator = token.literal;
@@ -196,6 +218,7 @@ pub const Parser = struct {
         };
 
         var left = prefix(self);
+        print("left => {any}\n", .{left});
 
         while (!self.peekTokenIs(TokenType.SEMICOLON) and @intFromEnum(prec) < @intFromEnum(self.peekPrecedence())) {
             const infix = Self.infixParser(self.peekToken.tokenType) orelse {
@@ -299,7 +322,7 @@ test "return statements" {
     }
 }
 
-test "identifier" {
+test "identifier expressions" {
     const test_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(test_allocator);
     defer arena.deinit();
@@ -318,7 +341,7 @@ test "identifier" {
     try expect(utils.strEql("foobar", expression.tokenLiteral()));
 }
 
-test "integer" {
+test "integer literals" {
     const test_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(test_allocator);
     defer arena.deinit();
@@ -334,6 +357,33 @@ test "integer" {
     try testLongLiteral(expressionStatement.expression, 5, allocator);
 }
 
+test "parsing prefix expressions" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const TestCase = utils.Tuple3([]const u8, []const u8, Payload);
+    const expecteds = [_]TestCase{TestCase{ .a = "!5", .b = "!", .c = Payload{ .int = 5 } }};
+
+    for (expecteds) |expected| {
+        var input = expected.a;
+        var program = createProgram(input, allocator);
+        countStatements(1, program) catch unreachable;
+        const statement = program.statements[0];
+        const expression = statement.expressionStatement.expression orelse unreachable;
+        const prefix = expression.prefixExpression;
+        print("prefix {any}\n", .{prefix});
+        try expect(utils.strEql(expected.b, prefix.operator));
+        if (prefix.right) |right| {
+            print("before testing :{any}\n", .{right});
+            const prefixE: *ast.Expression = @constCast(right);
+            print("casted {any}\n", .{prefixE});
+            testLiteralExpression(right.*, expected.c, allocator) catch unreachable;
+        }
+    }
+}
+
 fn testLiteralExpression(expression: ?ast.Expression, expectedValue: Payload, allocator: std.mem.Allocator) !void {
     try switch (expectedValue) {
         .int => |int| testLongLiteral(expression, int, allocator),
@@ -344,6 +394,7 @@ fn testLiteralExpression(expression: ?ast.Expression, expectedValue: Payload, al
 
 fn testLongLiteral(expression: ?ast.Expression, int: i64, allocator: std.mem.Allocator) !void {
     _ = allocator;
+    std.debug.print("test long literal :{any}\n", .{expression});
     const notNull = expression orelse unreachable;
     const literal = notNull.integerLiteral;
     try expect(literal.value == int);
