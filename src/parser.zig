@@ -157,10 +157,13 @@ pub const Parser = struct {
     fn infixParser(tokenType: TokenType) ?InfixParser {
         return switch (tokenType) {
             .EQ => Self.parseInfixExpression,
+            .NOT_EQ => Self.parseInfixExpression,
             .PLUS => Self.parseInfixExpression,
             .MINUS => Self.parseInfixExpression,
             .ASTERISK => Self.parseInfixExpression,
             .SLASH => Self.parseInfixExpression,
+            .GT => Self.parseInfixExpression,
+            .LT => Self.parseInfixExpression,
             else => null,
         };
     }
@@ -395,7 +398,7 @@ test "parsing infix expression" {
 
     const TestCase = utils.Tuple4([]const u8, Payload, []const u8, Payload);
 
-    const expecteds = [_]TestCase{ TestCase{ .a = "5 + 5;", .b = Payload{ .int = 5 }, .c = "+", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 - 5;", .b = Payload{ .int = 5 }, .c = "-", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 * 5;", .b = Payload{ .int = 5 }, .c = "*", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 / 5;", .b = Payload{ .int = 5 }, .c = "/", .d = Payload{ .int = 5 } } };
+    const expecteds = [_]TestCase{ TestCase{ .a = "5 + 5;", .b = Payload{ .int = 5 }, .c = "+", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 - 5;", .b = Payload{ .int = 5 }, .c = "-", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 * 5;", .b = Payload{ .int = 5 }, .c = "*", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 / 5;", .b = Payload{ .int = 5 }, .c = "/", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 > 5;", .b = Payload{ .int = 5 }, .c = ">", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 < 5;", .b = Payload{ .int = 5 }, .c = "<", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 == 5;", .b = Payload{ .int = 5 }, .c = "==", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 != 5;", .b = Payload{ .int = 5 }, .c = "!=", .d = Payload{ .int = 5 } }, TestCase{ .a = "true == true;", .b = Payload{ .boolean = true }, .c = "==", .d = Payload{ .boolean = true } }, TestCase{ .a = "true != false;", .b = Payload{ .boolean = true }, .c = "!=", .d = Payload{ .boolean = false } }, TestCase{ .a = "false == false;", .b = Payload{ .boolean = false }, .c = "==", .d = Payload{ .boolean = false } } };
 
     for (expecteds) |expected| {
         const input = expected.a;
