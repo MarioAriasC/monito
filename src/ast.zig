@@ -48,6 +48,7 @@ pub const Expression = union(enum) {
     prefixExpression: PrefixExpression,
     callExpression: CallExpression,
     arrayLiteral: ArrayLiteral,
+    indexExpression: IndexExpression,
 
     pub fn token(self: Self) Token {
         switch (self) {
@@ -276,6 +277,14 @@ pub const IndexExpression = struct {
         self.left = left;
         self.index = index;
         return self.*;
+    }
+
+    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+        return std.fmt.allocPrint(allocator, "({s}[{s}])", .{ nullableToString(allocator, self.left), nullableToString(allocator, self.index) }) catch unreachable;
+    }
+
+    pub fn asExpression(self: Self) Expression {
+        return Expression{ .indexExpression = self };
     }
 };
 

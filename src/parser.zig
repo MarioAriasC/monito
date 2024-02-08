@@ -167,6 +167,7 @@ pub const Parser = struct {
             .GT => Self.parseInfixExpression,
             .LT => Self.parseInfixExpression,
             .LPAREN => Self.parseCallExpression,
+            .LBRACKET => Self.parseIndexExpression,
             else => null,
         };
     }
@@ -231,6 +232,19 @@ pub const Parser = struct {
         const token = self.curToken;
         const arguments = self.parseExpressionList(TokenType.RPAREN);
         return ast.CallExpression.init(self.allocator, token, heapExpression(self.allocator, expression), arguments).asExpression();
+    }
+
+    fn parseIndexExpression(self: *Self, expression: ?Expression) ?Expression {
+        const token = self.curToken;
+        self.nextToken();
+
+        const index = self.parseExpression(Precedence.LOWEST);
+
+        if (!self.expectPeek(TokenType.RBRACKET)) {
+            return null;
+        } else {
+            return ast.IndexExpression.init(self.allocator, token, heapExpression(self.allocator, expression), heapExpression(self.allocator, index)).asExpression();
+        }
     }
 
     fn parseExpressionList(self: *Self, end: TokenType) ?[]?*const Expression {
@@ -470,11 +484,8 @@ test "operator precedence" {
 
     for (expecteds) |expected| {
         const input = expected.a;
-        print("input    => {s}\n", .{input});
         const program = createProgram(input, allocator);
         const actual = program.toString(allocator);
-        print("expected => {s}\n", .{expected.b});
-        print("actual   => {s}\n", .{actual});
         try expect(utils.strEql(actual, expected.b));
     }
 }
