@@ -150,6 +150,8 @@ pub const Parser = struct {
             .FALSE => Self.parseBooleanLiteral,
             .BANG => Self.parsePrefixExpression,
             .MINUS => Self.parsePrefixExpression,
+            .LPAREN => Self.parseGroupExpression,
+            .LBRACKET => Self.parseArrayLiteral,
             else => null,
         };
     }
@@ -164,6 +166,7 @@ pub const Parser = struct {
             .SLASH => Self.parseInfixExpression,
             .GT => Self.parseInfixExpression,
             .LT => Self.parseInfixExpression,
+            .LPAREN => Self.parseCallExpression,
             else => null,
         };
     }
@@ -208,6 +211,11 @@ pub const Parser = struct {
         return prefix;
     }
 
+    fn parseArrayLiteral(self: *Self) ?Expression {
+        const token = self.curToken;
+        return ast.ArrayLiteral.init(self.allocator, token, self.parseExpressionList(TokenType.RBRACKET)).asExpression();
+    }
+
     fn parseInfixExpression(self: *Self, left: ?Expression) ?Expression {
         const token = self.curToken;
         const operator = token.literal;
@@ -217,6 +225,35 @@ pub const Parser = struct {
 
         const right = self.parseExpression(precedence);
         return ast.InfixExpression.init(self.allocator, token, heapExpression(self.allocator, left), operator, heapExpression(self.allocator, right)).asExpression();
+    }
+
+    fn parseCallExpression(self: *Self, expression: ?Expression) ?Expression {
+        const token = self.curToken;
+        const arguments = self.parseExpressionList(TokenType.RPAREN);
+        return ast.CallExpression.init(self.allocator, token, heapExpression(self.allocator, expression), arguments).asExpression();
+    }
+
+    fn parseExpressionList(self: *Self, end: TokenType) ?[]?*const Expression {
+        var arguments = std.ArrayList(?*const Expression).init(self.allocator);
+
+        if (self.peekTokenIs(end)) {
+            self.nextToken();
+            return arguments.items;
+        }
+
+        self.nextToken();
+        arguments.append(heapExpression(self.allocator, self.parseExpression(Precedence.LOWEST))) catch unreachable;
+        while (self.peekTokenIs(TokenType.COMMA)) {
+            self.nextToken();
+            self.nextToken();
+            arguments.append(heapExpression(self.allocator, self.parseExpression(Precedence.LOWEST))) catch unreachable;
+        }
+
+        if (!self.expectPeek(end)) {
+            return null;
+        } else {
+            return arguments.items;
+        }
     }
 
     fn parseExpression(self: *Self, prec: Precedence) ?Expression {
@@ -237,6 +274,16 @@ pub const Parser = struct {
         }
 
         return left;
+    }
+
+    fn parseGroupExpression(self: *Self) ?Expression {
+        self.nextToken();
+        const exp = self.parseExpression(Precedence.LOWEST);
+        if (!self.expectPeek(TokenType.RPAREN)) {
+            return null;
+        } else {
+            return exp;
+        }
     }
 
     fn peekTokenIs(self: *Self, tokenType: TokenType) bool {
@@ -408,6 +455,27 @@ test "parsing infix expression" {
         const expression = statement.expressionStatement.expression orelse unreachable;
         const infix = expression.infixExpression;
         testInfixExpression(infix, expected.b, expected.c, expected.d) catch unreachable;
+    }
+}
+
+test "operator precedence" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const TestCase = utils.Tuple2([]const u8, []const u8);
+
+    const expecteds = [_]TestCase{ TestCase{ .a = "-a * b", .b = "((-a) * b)" }, TestCase{ .a = "!-a", .b = "(!(-a))" }, TestCase{ .a = "a + b + c", .b = "((a + b) + c)" }, TestCase{ .a = "a + b - c", .b = "((a + b) - c)" }, TestCase{ .a = "a * b * c", .b = "((a * b) * c)" }, TestCase{ .a = "a * b / c", .b = "((a * b) / c)" }, TestCase{ .a = "a + b / c", .b = "(a + (b / c))" }, TestCase{ .a = "a + b * c + d / e - f", .b = "(((a + (b * c)) + (d / e)) - f)" }, TestCase{ .a = "3 + 4; -5 * 5", .b = "(3 + 4)((-5) * 5)" }, TestCase{ .a = "5 > 4 == 3 < 4", .b = "((5 > 4) == (3 < 4))" }, TestCase{ .a = "5 < 4 != 3 > 4", .b = "((5 < 4) != (3 > 4))" }, TestCase{ .a = "3 + 4 * 5 == 3 * 1 + 4 * 5", .b = "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))" }, TestCase{ .a = "true", .b = "true" }, TestCase{ .a = "false", .b = "false" }, TestCase{ .a = "3 > 5 == false", .b = "((3 > 5) == false)" }, TestCase{ .a = "3 < 5 == true", .b = "((3 < 5) == true)" }, TestCase{ .a = "1 + (2 + 3) + 4", .b = "((1 + (2 + 3)) + 4)" }, TestCase{ .a = "(5 + 5) * 2", .b = "((5 + 5) * 2)" }, TestCase{ .a = "2 / (5 + 5)", .b = "(2 / (5 + 5))" }, TestCase{ .a = "(5 + 5) * 2 * (5 + 5)", .b = "(((5 + 5) * 2) * (5 + 5))" }, TestCase{ .a = "-(5 + 5)", .b = "(-(5 + 5))" }, TestCase{ .a = "!(true == true)", .b = "(!(true == true))" }, TestCase{ .a = "a + add(b * c) + d", .b = "((a + add((b * c))) + d)" }, TestCase{ .a = "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", .b = "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))" }, TestCase{ .a = "add(a + b + c * d / f + g)", .b = "add((((a + b) + ((c * d) / f)) + g))" }, TestCase{ .a = "a * [1, 2, 3, 4][b * c] * d", .b = "((a * ([1, 2, 3, 4][(b * c)])) * d)" }, TestCase{ .a = "add(a * b[2], b[1], 2 * [1, 2][1])", .b = "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))" } };
+
+    for (expecteds) |expected| {
+        const input = expected.a;
+        print("input    => {s}\n", .{input});
+        const program = createProgram(input, allocator);
+        const actual = program.toString(allocator);
+        print("expected => {s}\n", .{expected.b});
+        print("actual   => {s}\n", .{actual});
+        try expect(utils.strEql(actual, expected.b));
     }
 }
 
