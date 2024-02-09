@@ -152,6 +152,7 @@ pub const Parser = struct {
             .MINUS => Self.parsePrefixExpression,
             .LPAREN => Self.parseGroupExpression,
             .LBRACKET => Self.parseArrayLiteral,
+            .IF => Self.parseIfExpression,
             else => null,
         };
     }
@@ -191,14 +192,22 @@ pub const Parser = struct {
         return ast.BooleanLiteral.init(self.allocator, self.curToken, self.curTokenIs(TokenType.TRUE)).asExpression();
     }
 
-    fn heapExpression(allocator: std.mem.Allocator, expression: ?Expression) ?*const Expression {
-        if (expression) |ex| {
-            const n = allocator.create(Expression) catch return null;
-            n.* = ex;
-            return n;
+    fn heap(allocator: std.mem.Allocator, comptime T: type, value: ?T) ?*const T {
+        if (value) |va| {
+            const t = allocator.create(T) catch return null;
+            t.* = va;
+            return t;
         } else {
             return null;
         }
+    }
+
+    fn heapExpression(allocator: std.mem.Allocator, expression: ?Expression) ?*const Expression {
+        return heap(allocator, Expression, expression);
+    }
+
+    fn heapStatement(allocator: std.mem.Allocator, statement: ?Statement) ?*const Statement {
+        return heap(allocator, Statement, statement);
     }
 
     fn parsePrefixExpression(self: *Self) ?Expression {
@@ -215,6 +224,57 @@ pub const Parser = struct {
     fn parseArrayLiteral(self: *Self) ?Expression {
         const token = self.curToken;
         return ast.ArrayLiteral.init(self.allocator, token, self.parseExpressionList(TokenType.RBRACKET)).asExpression();
+    }
+
+    fn parseIfExpression(self: *Self) ?Expression {
+        const token = self.curToken;
+        if (!self.expectPeek(TokenType.LPAREN)) {
+            return null;
+        }
+
+        self.nextToken();
+
+        const condition = self.parseExpression(Precedence.LOWEST);
+
+        if (!self.expectPeek(TokenType.RPAREN)) {
+            return null;
+        }
+
+        if (!self.expectPeek(TokenType.LBRACE)) {
+            return null;
+        }
+
+        const consequence = self.parseBlockStatement();
+
+        const alternative = blk: {
+            if (self.peekTokenIs(TokenType.ELSE)) {
+                self.nextToken();
+                if (!self.expectPeek(TokenType.LBRACE)) {
+                    return null;
+                }
+                break :blk self.parseBlockStatement();
+            } else {
+                break :blk null;
+            }
+        };
+
+        return ast.IfExpression.init(self.allocator, token, heapExpression(self.allocator, condition), consequence, alternative).asExpression();
+    }
+
+    fn parseBlockStatement(self: *Self) ast.BlockStatement {
+        const token = self.curToken;
+        var statements = std.ArrayList(?*const Statement).init(self.allocator);
+        self.nextToken();
+
+        while (!self.curTokenIs(TokenType.RBRACE) and !self.curTokenIs(TokenType.EOF)) {
+            const statement = self.parseStatement();
+            if (statement != null) {
+                statements.append(heapStatement(self.allocator, statement)) catch unreachable;
+            }
+            self.nextToken();
+        }
+
+        return ast.BlockStatement.init(self.allocator, token, statements.items);
     }
 
     fn parseInfixExpression(self: *Self, left: ?Expression) ?Expression {
@@ -488,6 +548,64 @@ test "operator precedence" {
         const actual = program.toString(allocator);
         try expect(utils.strEql(actual, expected.b));
     }
+}
+
+test "boolean expression" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const TestCase = utils.Tuple2([]const u8, bool);
+    const expecteds = [_]TestCase{ TestCase{ .a = "true", .b = true }, TestCase{ .a = "false", .b = false } };
+    for (expecteds) |expected| {
+        const input = expected.a;
+        const program = createProgram(input, allocator);
+        countStatements(1, program) catch unreachable;
+        const statement = program.statements[0];
+        const expression = statement.expressionStatement.expression orelse unreachable;
+        testBooleanLiteral(expression, expected.b) catch unreachable;
+    }
+}
+
+test "if expressions" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const input = "if (x < y) { x }";
+    const program = createProgram(input, allocator);
+    countStatements(1, program) catch unreachable;
+    const statement = program.statements[0];
+    const expression = statement.expressionStatement.expression orelse unreachable;
+    const if_expression = expression.ifExpression;
+    testInfixExpression(if_expression.condition.?.infixExpression, Payload{ .string = "x" }, "<", Payload{ .string = "y" }) catch unreachable;
+    try expect(if_expression.consequence.?.statements.?.len == 1);
+    const consequence = if_expression.consequence.?.statements.?[0];
+    testIdentifier(consequence.?.expressionStatement.expression, "x") catch unreachable;
+    try expect(if_expression.alternative == null);
+}
+
+test "if else expressions" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const input = "if (x < y) { x } else { y }";
+    const program = createProgram(input, allocator);
+    countStatements(1, program) catch unreachable;
+    const statement = program.statements[0];
+    const expression = statement.expressionStatement.expression orelse unreachable;
+    const if_expression = expression.ifExpression;
+    testInfixExpression(if_expression.condition.?.infixExpression, Payload{ .string = "x" }, "<", Payload{ .string = "y" }) catch unreachable;
+
+    try expect(if_expression.consequence.?.statements.?.len == 1);
+    const consequence = if_expression.consequence.?.statements.?[0];
+    testIdentifier(consequence.?.expressionStatement.expression, "x") catch unreachable;
+
+    try expect(if_expression.alternative.?.statements.?.len == 1);
+    const alternative = if_expression.alternative.?.statements.?[0];
+    testIdentifier(alternative.?.expressionStatement.expression, "y") catch unreachable;
 }
 
 fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []const u8, right: Payload) !void {
