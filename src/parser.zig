@@ -92,7 +92,14 @@ pub const Parser = struct {
 
         var value = self.parseExpression(Precedence.LOWEST);
 
-        // TODO add setting the name for function literral
+        if (value) |not_null_value| {
+            if (not_null_value == Expression.functionLiteral) {
+                // &not_null_value.functionLiteral.setName(name.value);
+                // ?? TODO
+                var function_literal = not_null_value.functionLiteral;
+                function_literal.setName(name.value);
+            }
+        }
 
         if (self.peekTokenIs(TokenType.SEMICOLON)) {
             self.nextToken();
@@ -153,6 +160,7 @@ pub const Parser = struct {
             .LPAREN => Self.parseGroupExpression,
             .LBRACKET => Self.parseArrayLiteral,
             .IF => Self.parseIfExpression,
+            .FUNCTION => Self.parseFunctionLiteral,
             else => null,
         };
     }
@@ -208,6 +216,10 @@ pub const Parser = struct {
 
     fn heapStatement(allocator: std.mem.Allocator, statement: ?Statement) ?*const Statement {
         return heap(allocator, Statement, statement);
+    }
+
+    fn heapIdentifier(allocator: std.mem.Allocator, identifier: ?ast.Identifier) ?*const ast.Identifier {
+        return heap(allocator, ast.Identifier, identifier);
     }
 
     fn parsePrefixExpression(self: *Self) ?Expression {
@@ -275,6 +287,55 @@ pub const Parser = struct {
         }
 
         return ast.BlockStatement.init(self.allocator, token, statements.items);
+    }
+
+    fn parseFunctionLiteral(self: *Self) ?Expression {
+        const token = self.curToken;
+        if (!self.expectPeek(TokenType.LPAREN)) {
+            return null;
+        }
+
+        const parameters = self.parseFunctionParameters();
+
+        if (!self.expectPeek(TokenType.LBRACE)) {
+            return null;
+        }
+
+        const body = self.parseBlockStatement();
+
+        return ast.FunctionLiteral.init(self.allocator, token, parameters, body, "").asExpression();
+    }
+
+    fn parseFunctionParameters(self: *Self) ?[]*const ast.Identifier {
+        var parameters = std.ArrayList(*const ast.Identifier).init(self.allocator);
+        if (self.peekTokenIs(TokenType.RPAREN)) {
+            self.nextToken();
+            return parameters.items;
+        }
+
+        self.nextToken();
+        const token = self.curToken;
+
+        if (heapIdentifier(self.allocator, ast.Identifier.init(self.allocator, token, token.literal))) |identifier| {
+            parameters.append(identifier) catch unreachable;
+        }
+
+        while (self.peekTokenIs(TokenType.COMMA)) {
+            self.nextToken();
+            self.nextToken();
+
+            const innerToken = self.curToken;
+
+            if (heapIdentifier(self.allocator, ast.Identifier.init(self.allocator, innerToken, innerToken.literal))) |identifier| {
+                parameters.append(identifier) catch unreachable;
+            }
+        }
+
+        if (!self.expectPeek(TokenType.RPAREN)) {
+            return null;
+        }
+
+        return parameters.items;
     }
 
     fn parseInfixExpression(self: *Self, left: ?Expression) ?Expression {
@@ -573,6 +634,7 @@ test "if expressions" {
     var arena = std.heap.ArenaAllocator.init(test_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
+
     const input = "if (x < y) { x }";
     const program = createProgram(input, allocator);
     countStatements(1, program) catch unreachable;
@@ -591,6 +653,7 @@ test "if else expressions" {
     var arena = std.heap.ArenaAllocator.init(test_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
+
     const input = "if (x < y) { x } else { y }";
     const program = createProgram(input, allocator);
     countStatements(1, program) catch unreachable;
@@ -606,6 +669,29 @@ test "if else expressions" {
     try expect(if_expression.alternative.?.statements.?.len == 1);
     const alternative = if_expression.alternative.?.statements.?[0];
     testIdentifier(alternative.?.expressionStatement.expression, "y") catch unreachable;
+}
+
+test "function literal parsing" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const input = "fn(x, y) { x + y; }";
+    const program = createProgram(input, allocator);
+    countStatements(1, program) catch unreachable;
+    const statement = program.statements[0];
+    const expression = statement.expressionStatement.expression orelse unreachable;
+    const function_literal = expression.functionLiteral;
+    const parameters = function_literal.parameters.?;
+
+    testLiteralExpression(parameters[0].asExpression(), Payload{ .string = "x" }) catch unreachable;
+    testLiteralExpression(parameters[1].asExpression(), Payload{ .string = "y" }) catch unreachable;
+
+    try expect(function_literal.body.?.statements.?.len == 1);
+
+    const body_statement = function_literal.body.?.statements.?[0];
+    testInfixExpression(body_statement.?.expressionStatement.expression.?.infixExpression, Payload{ .string = "x" }, "+", Payload{ .string = "y" }) catch unreachable;
 }
 
 fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []const u8, right: Payload) !void {

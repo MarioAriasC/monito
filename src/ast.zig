@@ -50,6 +50,7 @@ pub const Expression = union(enum) {
     arrayLiteral: ArrayLiteral,
     indexExpression: IndexExpression,
     ifExpression: IfExpression,
+    functionLiteral: FunctionLiteral,
 
     pub fn token(self: Self) Token {
         switch (self) {
@@ -63,7 +64,7 @@ pub const Expression = union(enum) {
 
     pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         switch (self) {
-            inline else => |impl| return impl.toStringInternal(allocator),
+            inline else => |impl| return impl.toString(allocator),
         }
     }
 };
@@ -87,7 +88,7 @@ pub const Statement = union(enum) {
 
     pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         switch (self) {
-            inline else => |impl| return impl.toStringInternal(allocator),
+            inline else => |impl| return impl.toString(allocator),
         }
     }
 };
@@ -113,7 +114,7 @@ pub const Identifier = struct {
         return self.*;
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         _ = allocator;
         return self.token.literal;
     }
@@ -155,7 +156,7 @@ pub const InfixExpression = struct {
         return self.*;
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         return std.fmt.allocPrint(allocator, "({s} {s} {s})", .{ ptrNullableToString(allocator, Expression, self.left, "null"), self.operator, ptrNullableToString(allocator, Expression, self.right, "null") }) catch unreachable;
     }
 
@@ -180,7 +181,7 @@ pub const IntegerLiteral = struct {
         return literalInit(Self, i64, allocator, token, value);
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         _ = allocator;
         return self.token.literal;
     }
@@ -199,7 +200,7 @@ pub const BooleanLiteral = struct {
         return literalInit(Self, bool, allocator, token, value);
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         _ = allocator;
         return self.token.literal;
     }
@@ -223,7 +224,7 @@ pub const PrefixExpression = struct {
         return self.*;
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         return std.fmt.allocPrint(allocator, "({s}{s})", .{ self.operator, ptrNullableToString(allocator, Expression, self.right, "null") }) catch unreachable;
     }
 
@@ -270,7 +271,7 @@ pub const CallExpression = struct {
         return Expression{ .callExpression = self };
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         return std.fmt.allocPrint(allocator, "{s}({s})", .{ ptrNullableToString(allocator, Expression, self.function, "null"), nullableJoinString(allocator, Expression, self.arguments, ", ") }) catch unreachable;
     }
 };
@@ -289,7 +290,7 @@ pub const IndexExpression = struct {
         return self.*;
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         return std.fmt.allocPrint(allocator, "({s}[{s}])", .{ ptrNullableToString(allocator, Expression, self.left, "null"), ptrNullableToString(allocator, Expression, self.index, "null") }) catch unreachable;
     }
 
@@ -310,7 +311,7 @@ pub const ArrayLiteral = struct {
         return self.*;
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         return std.fmt.allocPrint(allocator, "[{s}]", .{nullableJoinString(allocator, Expression, self.elements, ", ")}) catch unreachable;
     }
 
@@ -335,17 +336,17 @@ pub const IfExpression = struct {
         return self.*;
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         const alter_str = blk: {
             if (self.alternative) |alternative| {
-                break :blk std.fmt.allocPrint(allocator, "else {s}", .{alternative.toStringInternal(allocator)}) catch unreachable;
+                break :blk std.fmt.allocPrint(allocator, "else {s}", .{alternative.toString(allocator)}) catch unreachable;
             } else {
                 break :blk "";
             }
         };
         const consequence_str = blk: {
             if (self.consequence) |consequence| {
-                break :blk consequence.asStatement().toString(allocator);
+                break :blk consequence.toString(allocator);
             } else {
                 break :blk "null";
             }
@@ -355,6 +356,46 @@ pub const IfExpression = struct {
 
     pub fn asExpression(self: Self) Expression {
         return Expression{ .ifExpression = self };
+    }
+};
+
+pub const FunctionLiteral = struct {
+    const Self = @This();
+    token: Token,
+    parameters: ?[]*const Identifier,
+    body: ?BlockStatement,
+    name: []const u8,
+
+    var another: []const u8 = "";
+
+    pub fn init(allocator: std.mem.Allocator, token: Token, parameters: ?[]*const Identifier, body: ?BlockStatement, name: []const u8) Self {
+        var self = allocator.create(Self) catch unreachable;
+        self.token = token;
+        self.parameters = parameters;
+        self.body = body;
+        self.name = name;
+        return self.*;
+    }
+
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
+        const token_literal = self.token.literal;
+        const name = if (self.name.len != 0) std.fmt.allocPrint(allocator, "<{s}>", .{self.name}) catch unreachable else "";
+        const parameters = blk: {
+            if (self.parameters) |params| {
+                break :blk joinToString(*const Identifier, params, allocator, ", ");
+            } else {
+                break :blk "";
+            }
+        };
+        return std.fmt.allocPrint(allocator, "{s}{s}({s}) {s}", .{ token_literal, name, parameters, nullableToString(allocator, BlockStatement, self.body, "") }) catch unreachable;
+    }
+
+    pub fn asExpression(self: Self) Expression {
+        return Expression{ .functionLiteral = self };
+    }
+
+    pub fn setName(self: *Self, name: []const u8) void {
+        self.name = name;
     }
 };
 
@@ -372,8 +413,8 @@ pub const LetStatement = struct {
         return self.*;
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "{s} {s} = {s}", .{ self.token.literal, self.name.toStringInternal(allocator), nullableToString(allocator, Expression, self.value, "") }) catch unreachable;
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
+        return std.fmt.allocPrint(allocator, "{s} {s} = {s}", .{ self.token.literal, self.name.toString(allocator), nullableToString(allocator, Expression, self.value, "") }) catch unreachable;
     }
 
     pub fn asStatement(self: Self) Statement {
@@ -393,7 +434,7 @@ pub const ExpressionStatement = struct {
         return self.*;
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         return nullableToString(allocator, Expression, self.expression, "");
     }
 
@@ -414,7 +455,7 @@ pub const ReturnStatement = struct {
         return statement.*;
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         const returnStr = blk: {
             if (self.returnValue) |returnValue| {
                 break :blk returnValue.toString(allocator);
@@ -442,7 +483,7 @@ pub const BlockStatement = struct {
         return statement.*;
     }
 
-    pub fn toStringInternal(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
         if (self.statements == null) {
             return nullableJoinString(allocator, Statement, self.statements, "");
         } else {
