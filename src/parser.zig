@@ -694,6 +694,35 @@ test "function literal parsing" {
     testInfixExpression(body_statement.?.expressionStatement.expression.?.infixExpression, Payload{ .string = "x" }, "+", Payload{ .string = "y" }) catch unreachable;
 }
 
+test "function parameter parsing" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    // I use a nullable []const u8 instaed of a multi dimensional array as the original test, under the understanding
+    // that each parameter is a character (u8)
+    const TestCase = utils.Tuple2([]const u8, ?[]const u8);
+
+    const tests = [_]TestCase{ TestCase{ .a = "fn() {}", .b = null }, TestCase{ .a = "fn(x) {}", .b = "x" }, TestCase{ .a = "fn(x, y, z) {}", .b = "xyz" } };
+
+    for (tests) |expected| {
+        const input = expected.a;
+        const params = expected.b;
+        const program = createProgram(input, allocator);
+        const statement = program.statements[0];
+        const expression = statement.expressionStatement.expression orelse unreachable;
+        const function_literal = expression.functionLiteral;
+
+        if (params) |not_null_params| {
+            try expect(function_literal.parameters.?.len == not_null_params.len);
+            for (not_null_params, 0..) |param, i| {
+                testLiteralExpression(function_literal.parameters.?[i].asExpression(), Payload{ .string = &[1]u8{param} }) catch unreachable;
+            }
+        }
+    }
+}
+
 fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []const u8, right: Payload) !void {
     if (infix.left) |l| {
         testLiteralExpression(l.*, left) catch unreachable;
@@ -732,6 +761,7 @@ fn testBooleanLiteral(expression: ?ast.Expression, b: bool) !void {
 fn testIdentifier(expression: ?ast.Expression, string: []const u8) !void {
     const notNull = expression orelse unreachable;
     const identifier = notNull.identifier;
+    std.debug.print("{s} = {s}\n", .{ identifier.value, string });
     try expect(utils.strEql(identifier.value, string));
     try expect(utils.strEql(notNull.tokenLiteral(), string));
 }
