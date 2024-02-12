@@ -700,8 +700,8 @@ test "function parameter parsing" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    // I use a nullable []const u8 instaed of a multi dimensional array as the original test, under the understanding
-    // that each parameter is a character (u8)
+    // I use a nullable []const u8 instaed of a multi dimensional array as the original test,
+    // under the understanding that each parameter is a character (u8)
     const TestCase = utils.Tuple2([]const u8, ?[]const u8);
 
     const tests = [_]TestCase{ TestCase{ .a = "fn() {}", .b = null }, TestCase{ .a = "fn(x) {}", .b = "x" }, TestCase{ .a = "fn(x, y, z) {}", .b = "xyz" } };
@@ -721,6 +721,27 @@ test "function parameter parsing" {
             }
         }
     }
+}
+
+test "call expressione parsing" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const input = "add(1, 2 * 3, 4+5);";
+    const program = createProgram(input, allocator);
+    countStatements(1, program) catch unreachable;
+
+    const statement = program.statements[0];
+    const expression = statement.expressionStatement.expression orelse unreachable;
+    const call_expression = expression.callExpression;
+    try testIdentifier(call_expression.function.?.*, "add");
+    const arguments = call_expression.arguments;
+    try expect(arguments.?.len == 3);
+    try testLiteralExpression(arguments.?[0].?.*, Payload{ .int = 1 });
+    try testInfixExpression(arguments.?[1].?.infixExpression, Payload{ .int = 2 }, "*", Payload{ .int = 3 });
+    try testInfixExpression(arguments.?[2].?.infixExpression, Payload{ .int = 4 }, "+", Payload{ .int = 5 });
 }
 
 fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []const u8, right: Payload) !void {
@@ -761,7 +782,7 @@ fn testBooleanLiteral(expression: ?ast.Expression, b: bool) !void {
 fn testIdentifier(expression: ?ast.Expression, string: []const u8) !void {
     const notNull = expression orelse unreachable;
     const identifier = notNull.identifier;
-    std.debug.print("{s} = {s}\n", .{ identifier.value, string });
+    // std.debug.print("{s} = {s}\n", .{ identifier.value, string });
     try expect(utils.strEql(identifier.value, string));
     try expect(utils.strEql(notNull.tokenLiteral(), string));
 }
