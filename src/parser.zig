@@ -766,6 +766,23 @@ test "string literal expression" {
     try expect(utils.strEql(string.value, "hello world"));
 }
 
+test "parsing array literal" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const input = "[1, 2 * 2, 3 + 3]";
+    const program = createProgram(input, allocator);
+
+    const statement = program.statements[0];
+    const expression = statement.expressionStatement.expression orelse unreachable;
+    const array_literal = expression.arrayLiteral;
+    try testLongLiteral(array_literal.elements.?[0].?.*, 1);
+    try testInfixExpression(array_literal.elements.?[1].?.infixExpression, Payload{ .int = 2 }, "*", Payload{ .int = 2 });
+    try testInfixExpression(array_literal.elements.?[2].?.infixExpression, Payload{ .int = 3 }, "+", Payload{ .int = 3 });
+}
+
 fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []const u8, right: Payload) !void {
     if (infix.left) |l| {
         testLiteralExpression(l.*, left) catch unreachable;
