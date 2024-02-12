@@ -783,6 +783,20 @@ test "parsing array literal" {
     try testInfixExpression(array_literal.elements.?[2].?.infixExpression, Payload{ .int = 3 }, "+", Payload{ .int = 3 });
 }
 
+test "parsing index expression" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const input = "myArray[1 + 1]";
+    const program = createProgram(input, allocator);
+    const expression = program.statements[0].expressionStatement.expression;
+    const index_expression = expression.?.indexExpression;
+    try testIdentifier(index_expression.left.?.*, "myArray");
+    try testInfixExpression(index_expression.index.?.infixExpression, Payload{ .int = 1 }, "+", Payload{ .int = 1 });
+}
+
 fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []const u8, right: Payload) !void {
     if (infix.left) |l| {
         testLiteralExpression(l.*, left) catch unreachable;
