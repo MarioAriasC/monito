@@ -51,6 +51,7 @@ pub const Expression = union(enum) {
     indexExpression: IndexExpression,
     ifExpression: IfExpression,
     functionLiteral: FunctionLiteral,
+    stringLiteral: StringLiteral,
 
     pub fn token(self: Self) Token {
         switch (self) {
@@ -93,37 +94,6 @@ pub const Statement = union(enum) {
     }
 };
 
-const StringLiteral = struct {
-    const Self = @This();
-    token: Token,
-    value: []const u8,
-    pub fn toString(self: Self) []const u8 {
-        return self.value;
-    }
-};
-
-pub const Identifier = struct {
-    const Self = @This();
-    token: Token,
-    value: []const u8,
-
-    pub fn init(allocator: std.mem.Allocator, token: Token, value: []const u8) Self {
-        var self = allocator.create(Self) catch unreachable;
-        self.token = token;
-        self.value = value;
-        return self.*;
-    }
-
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        _ = allocator;
-        return self.token.literal;
-    }
-
-    pub fn asExpression(self: Self) Expression {
-        return Expression{ .identifier = self };
-    }
-};
-
 fn ptrNullableToString(allocator: std.mem.Allocator, comptime T: type, nullable: ?*const T, default: []const u8) []const u8 {
     if (nullable) |not_null| {
         return not_null.toString(allocator);
@@ -139,31 +109,6 @@ fn nullableToString(allocator: std.mem.Allocator, comptime T: type, nullable: ?T
         return default;
     }
 }
-
-pub const InfixExpression = struct {
-    const Self = @This();
-    token: Token,
-    left: ?*const Expression,
-    operator: []const u8,
-    right: ?*const Expression,
-
-    pub fn init(allocator: std.mem.Allocator, token: Token, left: ?*const Expression, operator: []const u8, right: ?*const Expression) Self {
-        var self = allocator.create(Self) catch unreachable;
-        self.token = token;
-        self.left = left;
-        self.operator = operator;
-        self.right = right;
-        return self.*;
-    }
-
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "({s} {s} {s})", .{ ptrNullableToString(allocator, Expression, self.left, "null"), self.operator, ptrNullableToString(allocator, Expression, self.right, "null") }) catch unreachable;
-    }
-
-    pub fn asExpression(self: Self) Expression {
-        return Expression{ .infixExpression = self };
-    }
-};
 
 fn literalInit(comptime T: type, comptime V: type, allocator: std.mem.Allocator, token: Token, value: V) T {
     var self = allocator.create(T) catch unreachable;
@@ -207,6 +152,69 @@ pub const BooleanLiteral = struct {
 
     pub fn asExpression(self: Self) Expression {
         return Expression{ .booleanLiteral = self };
+    }
+};
+
+pub const StringLiteral = struct {
+    const Self = @This();
+    token: Token,
+    value: []const u8,
+
+    pub fn init(allocator: std.mem.Allocator, token: Token, value: []const u8) Self {
+        return literalInit(Self, []const u8, allocator, token, value);
+    }
+
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
+        _ = allocator;
+        return self.value;
+    }
+
+    pub fn asExpression(self: Self) Expression {
+        return Expression{ .stringLiteral = self };
+    }
+};
+
+pub const Identifier = struct {
+    const Self = @This();
+    token: Token,
+    value: []const u8,
+
+    pub fn init(allocator: std.mem.Allocator, token: Token, value: []const u8) Self {
+        return literalInit(Self, []const u8, allocator, token, value);
+    }
+
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
+        _ = allocator;
+        return self.value;
+    }
+
+    pub fn asExpression(self: Self) Expression {
+        return Expression{ .identifier = self };
+    }
+};
+
+pub const InfixExpression = struct {
+    const Self = @This();
+    token: Token,
+    left: ?*const Expression,
+    operator: []const u8,
+    right: ?*const Expression,
+
+    pub fn init(allocator: std.mem.Allocator, token: Token, left: ?*const Expression, operator: []const u8, right: ?*const Expression) Self {
+        var self = allocator.create(Self) catch unreachable;
+        self.token = token;
+        self.left = left;
+        self.operator = operator;
+        self.right = right;
+        return self.*;
+    }
+
+    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
+        return std.fmt.allocPrint(allocator, "({s} {s} {s})", .{ ptrNullableToString(allocator, Expression, self.left, "null"), self.operator, ptrNullableToString(allocator, Expression, self.right, "null") }) catch unreachable;
+    }
+
+    pub fn asExpression(self: Self) Expression {
+        return Expression{ .infixExpression = self };
     }
 };
 

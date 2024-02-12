@@ -161,6 +161,7 @@ pub const Parser = struct {
             .LBRACKET => Self.parseArrayLiteral,
             .IF => Self.parseIfExpression,
             .FUNCTION => Self.parseFunctionLiteral,
+            .STRING => Self.parseStringLiteral,
             else => null,
         };
     }
@@ -304,6 +305,11 @@ pub const Parser = struct {
         const body = self.parseBlockStatement();
 
         return ast.FunctionLiteral.init(self.allocator, token, parameters, body, "").asExpression();
+    }
+
+    fn parseStringLiteral(self: *Self) ?Expression {
+        const token = self.curToken;
+        return ast.StringLiteral.init(self.allocator, token, token.literal).asExpression();
     }
 
     fn parseFunctionParameters(self: *Self) ?[]*const ast.Identifier {
@@ -731,7 +737,7 @@ test "call expressione parsing" {
 
     const input = "add(1, 2 * 3, 4+5);";
     const program = createProgram(input, allocator);
-    countStatements(1, program) catch unreachable;
+    try countStatements(1, program);
 
     const statement = program.statements[0];
     const expression = statement.expressionStatement.expression orelse unreachable;
@@ -742,6 +748,22 @@ test "call expressione parsing" {
     try testLiteralExpression(arguments.?[0].?.*, Payload{ .int = 1 });
     try testInfixExpression(arguments.?[1].?.infixExpression, Payload{ .int = 2 }, "*", Payload{ .int = 3 });
     try testInfixExpression(arguments.?[2].?.infixExpression, Payload{ .int = 4 }, "+", Payload{ .int = 5 });
+}
+
+test "string literal expression" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const input =
+        \\"hello world"
+    ;
+
+    const program = createProgram(input, allocator);
+    try countStatements(1, program);
+    const string = program.statements[0].expressionStatement.expression.?.stringLiteral;
+    try expect(utils.strEql(string.value, "hello world"));
 }
 
 fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []const u8, right: Payload) !void {
