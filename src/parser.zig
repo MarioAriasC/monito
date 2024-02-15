@@ -502,7 +502,11 @@ test "return statements" {
 
     const TestCase = utils.Tuple2([]const u8, Payload);
 
-    const expecteds = [_]TestCase{ TestCase{ .a = "return 5;", .b = Payload{ .int = 5 } }, TestCase{ .a = "return true;", .b = Payload{ .boolean = true } }, TestCase{ .a = "return foobar;", .b = Payload{ .string = "foobar" } } };
+    const expecteds = [_]TestCase{
+        TestCase{ .a = "return 5;", .b = Payload{ .int = 5 } },
+        TestCase{ .a = "return true;", .b = Payload{ .boolean = true } },
+        TestCase{ .a = "return foobar;", .b = Payload{ .string = "foobar" } },
+    };
 
     for (expecteds) |expected| {
         var input = expected.a;
@@ -559,7 +563,12 @@ test "parsing prefix expressions" {
     const allocator = arena.allocator();
 
     const TestCase = utils.Tuple3([]const u8, []const u8, Payload);
-    const expecteds = [_]TestCase{ TestCase{ .a = "!5", .b = "!", .c = Payload{ .int = 5 } }, TestCase{ .a = "-15", .b = "-", .c = Payload{ .int = 15 } }, TestCase{ .a = "!true", .b = "!", .c = Payload{ .boolean = true } }, TestCase{ .a = "!false", .b = "!", .c = Payload{ .boolean = false } } };
+    const expecteds = [_]TestCase{
+        TestCase{ .a = "!5", .b = "!", .c = Payload{ .int = 5 } },
+        TestCase{ .a = "-15", .b = "-", .c = Payload{ .int = 15 } },
+        TestCase{ .a = "!true", .b = "!", .c = Payload{ .boolean = true } },
+        TestCase{ .a = "!false", .b = "!", .c = Payload{ .boolean = false } },
+    };
 
     for (expecteds) |expected| {
         var input = expected.a;
@@ -586,7 +595,19 @@ test "parsing infix expression" {
 
     const TestCase = utils.Tuple4([]const u8, Payload, []const u8, Payload);
 
-    const expecteds = [_]TestCase{ TestCase{ .a = "5 + 5;", .b = Payload{ .int = 5 }, .c = "+", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 - 5;", .b = Payload{ .int = 5 }, .c = "-", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 * 5;", .b = Payload{ .int = 5 }, .c = "*", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 / 5;", .b = Payload{ .int = 5 }, .c = "/", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 > 5;", .b = Payload{ .int = 5 }, .c = ">", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 < 5;", .b = Payload{ .int = 5 }, .c = "<", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 == 5;", .b = Payload{ .int = 5 }, .c = "==", .d = Payload{ .int = 5 } }, TestCase{ .a = "5 != 5;", .b = Payload{ .int = 5 }, .c = "!=", .d = Payload{ .int = 5 } }, TestCase{ .a = "true == true;", .b = Payload{ .boolean = true }, .c = "==", .d = Payload{ .boolean = true } }, TestCase{ .a = "true != false;", .b = Payload{ .boolean = true }, .c = "!=", .d = Payload{ .boolean = false } }, TestCase{ .a = "false == false;", .b = Payload{ .boolean = false }, .c = "==", .d = Payload{ .boolean = false } } };
+    const expecteds = [_]TestCase{
+        TestCase{ .a = "5 + 5;", .b = Payload{ .int = 5 }, .c = "+", .d = Payload{ .int = 5 } },
+        TestCase{ .a = "5 - 5;", .b = Payload{ .int = 5 }, .c = "-", .d = Payload{ .int = 5 } },
+        TestCase{ .a = "5 * 5;", .b = Payload{ .int = 5 }, .c = "*", .d = Payload{ .int = 5 } },
+        TestCase{ .a = "5 / 5;", .b = Payload{ .int = 5 }, .c = "/", .d = Payload{ .int = 5 } },
+        TestCase{ .a = "5 > 5;", .b = Payload{ .int = 5 }, .c = ">", .d = Payload{ .int = 5 } },
+        TestCase{ .a = "5 < 5;", .b = Payload{ .int = 5 }, .c = "<", .d = Payload{ .int = 5 } },
+        TestCase{ .a = "5 == 5;", .b = Payload{ .int = 5 }, .c = "==", .d = Payload{ .int = 5 } },
+        TestCase{ .a = "5 != 5;", .b = Payload{ .int = 5 }, .c = "!=", .d = Payload{ .int = 5 } },
+        TestCase{ .a = "true == true;", .b = Payload{ .boolean = true }, .c = "==", .d = Payload{ .boolean = true } },
+        TestCase{ .a = "true != false;", .b = Payload{ .boolean = true }, .c = "!=", .d = Payload{ .boolean = false } },
+        TestCase{ .a = "false == false;", .b = Payload{ .boolean = false }, .c = "==", .d = Payload{ .boolean = false } },
+    };
 
     for (expecteds) |expected| {
         const input = expected.a;
@@ -607,7 +628,35 @@ test "operator precedence" {
 
     const TestCase = utils.Tuple2([]const u8, []const u8);
 
-    const expecteds = [_]TestCase{ TestCase{ .a = "-a * b", .b = "((-a) * b)" }, TestCase{ .a = "!-a", .b = "(!(-a))" }, TestCase{ .a = "a + b + c", .b = "((a + b) + c)" }, TestCase{ .a = "a + b - c", .b = "((a + b) - c)" }, TestCase{ .a = "a * b * c", .b = "((a * b) * c)" }, TestCase{ .a = "a * b / c", .b = "((a * b) / c)" }, TestCase{ .a = "a + b / c", .b = "(a + (b / c))" }, TestCase{ .a = "a + b * c + d / e - f", .b = "(((a + (b * c)) + (d / e)) - f)" }, TestCase{ .a = "3 + 4; -5 * 5", .b = "(3 + 4)((-5) * 5)" }, TestCase{ .a = "5 > 4 == 3 < 4", .b = "((5 > 4) == (3 < 4))" }, TestCase{ .a = "5 < 4 != 3 > 4", .b = "((5 < 4) != (3 > 4))" }, TestCase{ .a = "3 + 4 * 5 == 3 * 1 + 4 * 5", .b = "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))" }, TestCase{ .a = "true", .b = "true" }, TestCase{ .a = "false", .b = "false" }, TestCase{ .a = "3 > 5 == false", .b = "((3 > 5) == false)" }, TestCase{ .a = "3 < 5 == true", .b = "((3 < 5) == true)" }, TestCase{ .a = "1 + (2 + 3) + 4", .b = "((1 + (2 + 3)) + 4)" }, TestCase{ .a = "(5 + 5) * 2", .b = "((5 + 5) * 2)" }, TestCase{ .a = "2 / (5 + 5)", .b = "(2 / (5 + 5))" }, TestCase{ .a = "(5 + 5) * 2 * (5 + 5)", .b = "(((5 + 5) * 2) * (5 + 5))" }, TestCase{ .a = "-(5 + 5)", .b = "(-(5 + 5))" }, TestCase{ .a = "!(true == true)", .b = "(!(true == true))" }, TestCase{ .a = "a + add(b * c) + d", .b = "((a + add((b * c))) + d)" }, TestCase{ .a = "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", .b = "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))" }, TestCase{ .a = "add(a + b + c * d / f + g)", .b = "add((((a + b) + ((c * d) / f)) + g))" }, TestCase{ .a = "a * [1, 2, 3, 4][b * c] * d", .b = "((a * ([1, 2, 3, 4][(b * c)])) * d)" }, TestCase{ .a = "add(a * b[2], b[1], 2 * [1, 2][1])", .b = "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))" } };
+    const expecteds = [_]TestCase{
+        TestCase{ .a = "-a * b", .b = "((-a) * b)" },
+        TestCase{ .a = "!-a", .b = "(!(-a))" },
+        TestCase{ .a = "a + b + c", .b = "((a + b) + c)" },
+        TestCase{ .a = "a + b - c", .b = "((a + b) - c)" },
+        TestCase{ .a = "a * b * c", .b = "((a * b) * c)" },
+        TestCase{ .a = "a * b / c", .b = "((a * b) / c)" },
+        TestCase{ .a = "a + b / c", .b = "(a + (b / c))" },
+        TestCase{ .a = "a + b * c + d / e - f", .b = "(((a + (b * c)) + (d / e)) - f)" },
+        TestCase{ .a = "3 + 4; -5 * 5", .b = "(3 + 4)((-5) * 5)" },
+        TestCase{ .a = "5 > 4 == 3 < 4", .b = "((5 > 4) == (3 < 4))" },
+        TestCase{ .a = "5 < 4 != 3 > 4", .b = "((5 < 4) != (3 > 4))" },
+        TestCase{ .a = "3 + 4 * 5 == 3 * 1 + 4 * 5", .b = "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))" },
+        TestCase{ .a = "true", .b = "true" },
+        TestCase{ .a = "false", .b = "false" },
+        TestCase{ .a = "3 > 5 == false", .b = "((3 > 5) == false)" },
+        TestCase{ .a = "3 < 5 == true", .b = "((3 < 5) == true)" },
+        TestCase{ .a = "1 + (2 + 3) + 4", .b = "((1 + (2 + 3)) + 4)" },
+        TestCase{ .a = "(5 + 5) * 2", .b = "((5 + 5) * 2)" },
+        TestCase{ .a = "2 / (5 + 5)", .b = "(2 / (5 + 5))" },
+        TestCase{ .a = "(5 + 5) * 2 * (5 + 5)", .b = "(((5 + 5) * 2) * (5 + 5))" },
+        TestCase{ .a = "-(5 + 5)", .b = "(-(5 + 5))" },
+        TestCase{ .a = "!(true == true)", .b = "(!(true == true))" },
+        TestCase{ .a = "a + add(b * c) + d", .b = "((a + add((b * c))) + d)" },
+        TestCase{ .a = "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", .b = "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))" },
+        TestCase{ .a = "add(a + b + c * d / f + g)", .b = "add((((a + b) + ((c * d) / f)) + g))" },
+        TestCase{ .a = "a * [1, 2, 3, 4][b * c] * d", .b = "((a * ([1, 2, 3, 4][(b * c)])) * d)" },
+        TestCase{ .a = "add(a * b[2], b[1], 2 * [1, 2][1])", .b = "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))" },
+    };
 
     for (expecteds) |expected| {
         const input = expected.a;
@@ -710,7 +759,11 @@ test "function parameter parsing" {
     // under the understanding that each parameter is a character (u8)
     const TestCase = utils.Tuple2([]const u8, ?[]const u8);
 
-    const tests = [_]TestCase{ TestCase{ .a = "fn() {}", .b = null }, TestCase{ .a = "fn(x) {}", .b = "x" }, TestCase{ .a = "fn(x, y, z) {}", .b = "xyz" } };
+    const tests = [_]TestCase{
+        TestCase{ .a = "fn() {}", .b = null },
+        TestCase{ .a = "fn(x) {}", .b = "x" },
+        TestCase{ .a = "fn(x, y, z) {}", .b = "xyz" },
+    };
 
     for (tests) |expected| {
         const input = expected.a;
