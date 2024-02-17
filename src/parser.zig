@@ -479,7 +479,11 @@ test "let statements" {
     const allocator = arena.allocator();
 
     const TestCase = utils.Tuple3([]const u8, []const u8, Payload);
-    const expecteds = [_]TestCase{ TestCase{ .a = "let x = 5;", .b = "x", .c = Payload{ .int = 5 } }, TestCase{ .a = "let y = true;", .b = "y", .c = Payload{ .boolean = true } }, TestCase{ .a = "let foobar = y;", .b = "foobar", .c = Payload{ .string = "y" } } };
+    const expecteds = [_]TestCase{
+        TestCase{ .a = "let x = 5;", .b = "x", .c = Payload{ .int = 5 } },
+        TestCase{ .a = "let y = true;", .b = "y", .c = Payload{ .boolean = true } },
+        TestCase{ .a = "let foobar = y;", .b = "foobar", .c = Payload{ .string = "y" } },
+    };
     for (expecteds) |expected| {
         const input = expected.a;
         var program = createProgram(input, allocator);
@@ -661,7 +665,7 @@ test "operator precedence" {
     for (expecteds) |expected| {
         const input = expected.a;
         const program = createProgram(input, allocator);
-        const actual = program.toString(allocator);
+        const actual = std.fmt.allocPrint(allocator, "{s}", .{program}) catch unreachable;
         try expect(utils.strEql(actual, expected.b));
     }
 }
@@ -711,19 +715,19 @@ test "if else expressions" {
 
     const input = "if (x < y) { x } else { y }";
     const program = createProgram(input, allocator);
-    countStatements(1, program) catch unreachable;
+    try countStatements(1, program);
     const statement = program.statements[0];
     const expression = statement.expressionStatement.expression orelse unreachable;
     const if_expression = expression.ifExpression;
-    testInfixExpression(if_expression.condition.?.infixExpression, Payload{ .string = "x" }, "<", Payload{ .string = "y" }) catch unreachable;
+    try testInfixExpression(if_expression.condition.?.infixExpression, Payload{ .string = "x" }, "<", Payload{ .string = "y" });
 
     try expect(if_expression.consequence.?.statements.?.len == 1);
     const consequence = if_expression.consequence.?.statements.?[0];
-    testIdentifier(consequence.?.expressionStatement.expression, "x") catch unreachable;
+    try testIdentifier(consequence.?.expressionStatement.expression, "x");
 
     try expect(if_expression.alternative.?.statements.?.len == 1);
     const alternative = if_expression.alternative.?.statements.?[0];
-    testIdentifier(alternative.?.expressionStatement.expression, "y") catch unreachable;
+    try testIdentifier(alternative.?.expressionStatement.expression, "y");
 }
 
 test "function literal parsing" {
@@ -734,19 +738,19 @@ test "function literal parsing" {
 
     const input = "fn(x, y) { x + y; }";
     const program = createProgram(input, allocator);
-    countStatements(1, program) catch unreachable;
+    try countStatements(1, program);
     const statement = program.statements[0];
     const expression = statement.expressionStatement.expression orelse unreachable;
     const function_literal = expression.functionLiteral;
     const parameters = function_literal.parameters.?;
 
-    testLiteralExpression(parameters[0].asExpression(), Payload{ .string = "x" }) catch unreachable;
-    testLiteralExpression(parameters[1].asExpression(), Payload{ .string = "y" }) catch unreachable;
+    try testLiteralExpression(parameters[0].asExpression(), Payload{ .string = "x" });
+    try testLiteralExpression(parameters[1].asExpression(), Payload{ .string = "y" });
 
     try expect(function_literal.body.?.statements.?.len == 1);
 
     const body_statement = function_literal.body.?.statements.?[0];
-    testInfixExpression(body_statement.?.expressionStatement.expression.?.infixExpression, Payload{ .string = "x" }, "+", Payload{ .string = "y" }) catch unreachable;
+    try testInfixExpression(body_statement.?.expressionStatement.expression.?.infixExpression, Payload{ .string = "x" }, "+", Payload{ .string = "y" });
 }
 
 test "function parameter parsing" {
@@ -776,7 +780,7 @@ test "function parameter parsing" {
         if (params) |not_null_params| {
             try expect(function_literal.parameters.?.len == not_null_params.len);
             for (not_null_params, 0..) |param, i| {
-                testLiteralExpression(function_literal.parameters.?[i].asExpression(), Payload{ .string = &[1]u8{param} }) catch unreachable;
+                try testLiteralExpression(function_literal.parameters.?[i].asExpression(), Payload{ .string = &[1]u8{param} });
             }
         }
     }
@@ -852,14 +856,14 @@ test "parsing index expression" {
 
 fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []const u8, right: Payload) !void {
     if (infix.left) |l| {
-        testLiteralExpression(l.*, left) catch unreachable;
+        try testLiteralExpression(l.*, left);
     } else {
         try expect(false);
     }
 
     try expect(utils.strEql(operator, infix.operator));
     if (infix.right) |r| {
-        testLiteralExpression(r.*, right) catch unreachable;
+        try testLiteralExpression(r.*, right);
     } else {
         try expect(false);
     }

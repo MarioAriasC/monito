@@ -6,34 +6,26 @@ const Token = tokens.Token;
 const TokenType = tokens.TokenType;
 const expect = std.testing.expect;
 
-fn joinToString(comptime T: type, values: []T, allocator: std.mem.Allocator, separartor: []const u8) []const u8 {
-    var list = std.ArrayList(u8).init(allocator);
-    const writer = list.writer();
-    for (values, 1..) |value, i| {
-        const sep = blk: {
-            if (i == values.len) {
-                break :blk "";
-            } else {
-                break :blk separartor;
-            }
-        };
-        writer.print("{s}{s}", .{ value.toString(allocator), sep }) catch unreachable;
-    }
-    return list.items;
-}
-
-fn toStringInternal(statements: []Statement, allocator: std.mem.Allocator) []const u8 {
-    return joinToString(Statement, statements, allocator, "");
-}
-
 pub const Program = struct {
+    const Self = @This();
     statements: []Statement,
 
-    pub fn toString(self: Program, allocator: std.mem.Allocator) []const u8 {
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
         switch (self.statements.len) {
-            0 => return "",
-            1 => return self.statements[0].toString(allocator),
-            else => return toStringInternal(self.statements, allocator),
+            0 => try writer.print("", .{}),
+            1 => try writer.print("{s}", .{self.statements[0]}),
+            else => {
+                for (self.statements) |statement| {
+                    try writer.print("{s}", .{statement});
+                }
+            },
         }
     }
 };
@@ -63,9 +55,14 @@ pub const Expression = union(enum) {
         return self.token().literal;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
         switch (self) {
-            inline else => |impl| return impl.toString(allocator),
+            inline else => |impl| try impl.format(fmt, options, writer),
         }
     }
 };
@@ -87,26 +84,31 @@ pub const Statement = union(enum) {
         return self.token().literal;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
         switch (self) {
-            inline else => |impl| return impl.toString(allocator),
+            inline else => |impl| try impl.format(fmt, options, writer),
         }
     }
 };
 
-fn ptrNullableToString(allocator: std.mem.Allocator, comptime T: type, nullable: ?*const T, default: []const u8) []const u8 {
+fn ptrNullableFormat(writer: anytype, comptime T: type, nullable: ?*const T, default: []const u8) !void {
     if (nullable) |not_null| {
-        return not_null.toString(allocator);
+        try writer.print("{s}", .{not_null});
     } else {
-        return default;
+        try writer.print("{s}", .{default});
     }
 }
 
-fn nullableToString(allocator: std.mem.Allocator, comptime T: type, nullable: ?T, default: []const u8) []const u8 {
+fn nullableFormat(writer: anytype, comptime T: type, nullable: ?T, default: []const u8) !void {
     if (nullable) |not_null| {
-        return not_null.toString(allocator);
+        try writer.print("{s}", .{not_null});
     } else {
-        return default;
+        try writer.print("{s}", .{default});
     }
 }
 
@@ -115,6 +117,17 @@ fn literalInit(comptime T: type, comptime V: type, allocator: std.mem.Allocator,
     self.token = token;
     self.value = value;
     return self.*;
+}
+
+pub fn literalFormat(
+    comptime T: type,
+    self: T,
+    comptime fmt: []const u8,
+    options: std.fmt.FormatOptions,
+    writer: anytype,
+) !void {
+    _ = options;
+    try writer.print(fmt, .{self.value});
 }
 
 pub const IntegerLiteral = struct {
@@ -126,9 +139,14 @@ pub const IntegerLiteral = struct {
         return literalInit(Self, i64, allocator, token, value);
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        _ = allocator;
-        return self.token.literal;
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        try literalFormat(Self, self, "{d}", options, writer);
     }
 
     pub fn asExpression(self: Self) Expression {
@@ -145,9 +163,14 @@ pub const BooleanLiteral = struct {
         return literalInit(Self, bool, allocator, token, value);
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        _ = allocator;
-        return self.token.literal;
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        try literalFormat(Self, self, "{}", options, writer);
     }
 
     pub fn asExpression(self: Self) Expression {
@@ -164,9 +187,14 @@ pub const StringLiteral = struct {
         return literalInit(Self, []const u8, allocator, token, value);
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        _ = allocator;
-        return self.value;
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        try literalFormat(Self, self, "{s}", options, writer);
     }
 
     pub fn asExpression(self: Self) Expression {
@@ -183,9 +211,14 @@ pub const Identifier = struct {
         return literalInit(Self, []const u8, allocator, token, value);
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        _ = allocator;
-        return self.value;
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        try literalFormat(Self, self, "{s}", options, writer);
     }
 
     pub fn asExpression(self: Self) Expression {
@@ -209,8 +242,19 @@ pub const InfixExpression = struct {
         return self.*;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "({s} {s} {s})", .{ ptrNullableToString(allocator, Expression, self.left, "null"), self.operator, ptrNullableToString(allocator, Expression, self.right, "null") }) catch unreachable;
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("(", .{});
+        try ptrNullableFormat(writer, Expression, self.left, "null");
+        try writer.print(" {s} ", .{self.operator});
+        try ptrNullableFormat(writer, Expression, self.right, "null");
+        try writer.print(")", .{});
     }
 
     pub fn asExpression(self: Self) Expression {
@@ -232,8 +276,17 @@ pub const PrefixExpression = struct {
         return self.*;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "({s}{s})", .{ self.operator, ptrNullableToString(allocator, Expression, self.right, "null") }) catch unreachable;
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("({s}", .{self.operator});
+        try ptrNullableFormat(writer, Expression, self.right, "null");
+        try writer.print(")", .{});
     }
 
     pub fn asExpression(self: Self) Expression {
@@ -241,23 +294,15 @@ pub const PrefixExpression = struct {
     }
 };
 
-fn nullableJoinString(allocator: std.mem.Allocator, comptime T: type, nullables: ?[]?*const T, separator: []const u8) []const u8 {
+fn nullableJoinFormat(writer: anytype, comptime T: type, nullables: ?[]?*const T, separartor: []const u8) !void {
     if (nullables) |not_nullables| {
-        var list = std.ArrayList(u8).init(allocator);
-        const writer = list.writer();
         for (not_nullables, 1..) |nullable, i| {
-            const real_sep = sepBlk: {
-                if (i == not_nullables.len) {
-                    break :sepBlk "";
-                } else {
-                    break :sepBlk separator;
-                }
-            };
-            writer.print("{s}{s}", .{ ptrNullableToString(allocator, T, nullable, "null"), real_sep }) catch unreachable;
+            const real_sep = if (i == not_nullables.len) "" else separartor;
+            try ptrNullableFormat(writer, T, nullable, "null");
+            try writer.print("{s}", .{real_sep});
         }
-        return list.items;
     } else {
-        return "null";
+        try writer.print("null", .{});
     }
 }
 
@@ -279,8 +324,18 @@ pub const CallExpression = struct {
         return Expression{ .callExpression = self };
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "{s}({s})", .{ ptrNullableToString(allocator, Expression, self.function, "null"), nullableJoinString(allocator, Expression, self.arguments, ", ") }) catch unreachable;
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try ptrNullableFormat(writer, Expression, self.function, "null");
+        try writer.print("(", .{});
+        try nullableJoinFormat(writer, Expression, self.arguments, ", ");
+        try writer.print(")", .{});
     }
 };
 
@@ -298,12 +353,23 @@ pub const IndexExpression = struct {
         return self.*;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "({s}[{s}])", .{ ptrNullableToString(allocator, Expression, self.left, "null"), ptrNullableToString(allocator, Expression, self.index, "null") }) catch unreachable;
-    }
-
     pub fn asExpression(self: Self) Expression {
         return Expression{ .indexExpression = self };
+    }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("(", .{});
+        try ptrNullableFormat(writer, Expression, self.left, "null");
+        try writer.print("[", .{});
+        try ptrNullableFormat(writer, Expression, self.index, "null");
+        try writer.print("])", .{});
     }
 };
 
@@ -319,12 +385,21 @@ pub const ArrayLiteral = struct {
         return self.*;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "[{s}]", .{nullableJoinString(allocator, Expression, self.elements, ", ")}) catch unreachable;
-    }
-
     pub fn asExpression(self: Self) Expression {
         return Expression{ .arrayLiteral = self };
+    }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("[", .{});
+        try nullableJoinFormat(writer, Expression, self.elements, ", ");
+        try writer.print("]", .{});
     }
 };
 
@@ -344,22 +419,25 @@ pub const IfExpression = struct {
         return self.*;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        const alter_str = blk: {
-            if (self.alternative) |alternative| {
-                break :blk std.fmt.allocPrint(allocator, "else {s}", .{alternative.toString(allocator)}) catch unreachable;
-            } else {
-                break :blk "";
-            }
-        };
-        const consequence_str = blk: {
-            if (self.consequence) |consequence| {
-                break :blk consequence.toString(allocator);
-            } else {
-                break :blk "null";
-            }
-        };
-        return std.fmt.allocPrint(allocator, "if {s} {s} {s}", .{ ptrNullableToString(allocator, Expression, self.condition, "null"), consequence_str, alter_str }) catch unreachable;
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("if ", .{});
+        try ptrNullableFormat(writer, Expression, self.condition, "null");
+        if (self.consequence) |consequence| {
+            try writer.print(" {s}", .{consequence});
+        } else {
+            try writer.print(" null", .{});
+        }
+        try writer.print(" ", .{});
+        if (self.alternative) |alternative| {
+            try writer.print("{s}", .{alternative});
+        }
     }
 
     pub fn asExpression(self: Self) Expression {
@@ -385,17 +463,27 @@ pub const FunctionLiteral = struct {
         return self.*;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        const token_literal = self.token.literal;
-        const name = if (self.name.len != 0) std.fmt.allocPrint(allocator, "<{s}>", .{self.name}) catch unreachable else "";
-        const parameters = blk: {
-            if (self.parameters) |params| {
-                break :blk joinToString(*const Identifier, params, allocator, ", ");
-            } else {
-                break :blk "";
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{s}", .{self.token.literal});
+        if (self.name.len != 0) {
+            try writer.print("<{s}>", .{self.name});
+        }
+        try writer.print("(", .{});
+        if (self.parameters) |parameters| {
+            for (parameters, 1..) |parameter, i| {
+                const sep = if (i == parameters.len) "" else ", ";
+                try writer.print("{s}{s}", .{ parameter, sep });
             }
-        };
-        return std.fmt.allocPrint(allocator, "{s}{s}({s}) {s}", .{ token_literal, name, parameters, nullableToString(allocator, BlockStatement, self.body, "") }) catch unreachable;
+        }
+        try writer.print(") ", .{});
+        try nullableFormat(writer, BlockStatement, self.body, "");
     }
 
     pub fn asExpression(self: Self) Expression {
@@ -421,8 +509,16 @@ pub const LetStatement = struct {
         return self.*;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        return std.fmt.allocPrint(allocator, "{s} {s} = {s}", .{ self.token.literal, self.name.toString(allocator), nullableToString(allocator, Expression, self.value, "") }) catch unreachable;
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{s} {s} = ", .{ self.token.literal, self.name });
+        try nullableFormat(writer, Expression, self.value, "");
     }
 
     pub fn asStatement(self: Self) Statement {
@@ -442,8 +538,15 @@ pub const ExpressionStatement = struct {
         return self.*;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        return nullableToString(allocator, Expression, self.expression, "");
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try nullableFormat(writer, Expression, self.expression, "");
     }
 
     pub fn asStatement(self: Self) Statement {
@@ -463,15 +566,18 @@ pub const ReturnStatement = struct {
         return statement.*;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        const returnStr = blk: {
-            if (self.returnValue) |returnValue| {
-                break :blk returnValue.toString(allocator);
-            } else {
-                break :blk "";
-            }
-        };
-        return std.fmt.allocPrint(allocator, "{s} {s}", .{ self.token.literal, returnStr }) catch unreachable;
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{s} ", .{self.token.literal});
+        if (self.returnValue) |returnValue| {
+            try writer.print("{} ", .{returnValue});
+        }
     }
 
     pub fn asStatement(self: Self) Statement {
@@ -491,11 +597,16 @@ pub const BlockStatement = struct {
         return statement.*;
     }
 
-    pub fn toString(self: Self, allocator: std.mem.Allocator) []const u8 {
-        if (self.statements == null) {
-            return nullableJoinString(allocator, Statement, self.statements, "");
-        } else {
-            return "";
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        if (self.statements != null) {
+            try nullableJoinFormat(writer, Statement, self.statements, "");
         }
     }
 
