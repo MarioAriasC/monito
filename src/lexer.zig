@@ -1,5 +1,5 @@
 const std = @import("std");
-const ArrayList = std.ArrayList;
+// const ArrayList = std.ArrayList;
 const tokens = @import("tokens.zig");
 const Token = tokens.Token;
 const TokenType = tokens.TokenType;
@@ -7,7 +7,7 @@ const utils = @import("utils.zig");
 const strEql = utils.strEql;
 const contains = utils.contains;
 
-const ZERO = @intCast(u8, 0);
+const ZERO: u8 = @intCast(0);
 const WHITE_SPACES = " \t\n\r";
 const VALID_IDENTFIER = "ABCDEFGHIJLKMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz";
 const VALID_DIGITS = "0123456789";
@@ -21,7 +21,7 @@ fn isDigit(ch: u8) bool {
     return contains(VALID_DIGITS, ch);
 }
 
-const Lexer = struct {
+pub const Lexer = struct {
     input: []const u8,
     allocator: std.mem.Allocator,
     position: u32,
@@ -138,7 +138,7 @@ const Lexer = struct {
         return self.readValue(isDigit);
     }
 
-    fn readValue(self: *Lexer, predicate: fn (u8) bool) []const u8 {
+    fn readValue(self: *Lexer, predicate: *const fn (u8) bool) []const u8 {
         var currentPosition = self.position;
         while (predicate(self.ch)) {
             self.readChar();

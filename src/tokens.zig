@@ -2,7 +2,39 @@ const utils = @import("utils.zig");
 const std = @import("std");
 const strEql = utils.strEql;
 
-pub const TokenType = enum { ILLEGAL, EOF, ASSIGN, EQ, NOT_EQ, IDENT, INT, PLUS, COMMA, SEMICOLON, COLON, MINUS, BANG, SLASH, ASTERISK, LT, GT, LPAREN, RPAREN, LBRACE, RBRACE, LBRACKET, RBRACKET, FUNCTION, LET, TRUE, FALSE, IF, ELSE, RETURN, STRING };
+pub const TokenType = enum {
+    ILLEGAL,
+    EOF,
+    ASSIGN,
+    EQ,
+    NOT_EQ,
+    IDENT,
+    INT,
+    PLUS,
+    COMMA,
+    SEMICOLON,
+    COLON,
+    MINUS,
+    BANG,
+    SLASH,
+    ASTERISK,
+    LT,
+    GT,
+    LPAREN,
+    RPAREN,
+    LBRACE,
+    RBRACE,
+    LBRACKET,
+    RBRACKET,
+    FUNCTION,
+    LET,
+    TRUE,
+    FALSE,
+    IF,
+    ELSE,
+    RETURN,
+    STRING,
+};
 
 pub fn lookupIdent(str: []const u8) TokenType {
     if (strEql("fn", str)) {
