@@ -82,7 +82,7 @@ pub const Parser = struct {
             return null;
         }
 
-        var name = ast.Identifier.init(self.allocator, self.curToken, self.curToken.literal);
+        const name = ast.Identifier.init(self.allocator, self.curToken, self.curToken.literal);
 
         if (!self.expectPeek(TokenType.ASSIGN)) {
             return null;
@@ -94,10 +94,9 @@ pub const Parser = struct {
 
         if (value) |not_null_value| {
             if (not_null_value == Expression.functionLiteral) {
-                // &not_null_value.functionLiteral.setName(name.value);
-                // ?? TODO
                 var function_literal = not_null_value.functionLiteral;
                 function_literal.setName(name.value);
+                value = function_literal.asExpression();
             }
         }
 
@@ -915,6 +914,20 @@ test "hash literal string keys" {
             try expect(false);
         }
     }
+}
+
+test "function literal witn name" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const input = "let myFunction = fn() {};";
+    const program = createProgram(input, allocator);
+    const statement = program.statements[0];
+    const let_statement = statement.letStatement;
+    const function = let_statement.value.?.functionLiteral;
+    const function_name = function.name;
+    try expect(utils.strEql(function_name, "myFunction"));
 }
 
 fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []const u8, right: Payload) !void {
