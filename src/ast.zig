@@ -44,6 +44,7 @@ pub const Expression = union(enum) {
     ifExpression: IfExpression,
     functionLiteral: FunctionLiteral,
     stringLiteral: StringLiteral,
+    hashLiteral: HashLiteral,
 
     pub fn token(self: Self) Token {
         switch (self) {
@@ -495,6 +496,82 @@ pub const FunctionLiteral = struct {
     }
 };
 
+pub const ExpressionContext = struct {
+    const Self = @This();
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) Self {
+        var self = allocator.create(Self) catch unreachable;
+        self.allocator = allocator;
+        return self.*;
+    }
+
+    fn format(self: Self, expression: *const Expression) []const u8 {
+        return std.fmt.allocPrint(self.allocator, "{}", .{expression}) catch unreachable;
+    }
+
+    pub fn eql(self: Self, expression1: *const Expression, expression2: *const Expression) bool {
+        const fmt1 = self.format(expression1);
+        const fmt2 = self.format(expression2);
+        defer self.allocator.free(fmt1);
+        defer self.allocator.free(fmt2);
+        return std.mem.eql(u8, fmt1, fmt2);
+    }
+
+    pub fn hash(self: Self, expression: *const Expression) u64 {
+        const fmt = self.format(expression);
+        defer self.allocator.free(fmt);
+        return std.hash.Wyhash.hash(0, fmt);
+    }
+};
+
+pub const HashLiteral = struct {
+    const Self = @This();
+    token: Token,
+    pairs: std.hash_map.HashMap(
+        *const Expression,
+        *const Expression,
+        ExpressionContext,
+        std.hash_map.default_max_load_percentage,
+    ),
+
+    pub fn init(
+        allocator: std.mem.Allocator,
+        token: Token,
+        pairs: std.hash_map.HashMap(
+            *const Expression,
+            *const Expression,
+            ExpressionContext,
+            std.hash_map.default_max_load_percentage,
+        ),
+    ) Self {
+        var self = allocator.create(Self) catch unreachable;
+        self.token = token;
+        self.pairs = pairs;
+        return self.*;
+    }
+
+    pub fn asExpression(self: Self) Expression {
+        return Expression{ .hashLiteral = self };
+    }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = options;
+        _ = fmt;
+        var iterator = self.pairs.iterator();
+        try writer.print("{s}", .{"{"});
+        while (iterator.next()) |entry| {
+            try writer.print("{}:{}{s}", .{ entry.key_ptr, entry.value_ptr, ", " });
+        }
+        try writer.print("{s}", .{"}"});
+    }
+};
+
 pub const LetStatement = struct {
     const Self = @This();
     token: Token,
@@ -646,6 +723,16 @@ test "casting back and for with nested enums" {
 
     try expect(utils.strEql(statement.tokenLiteral(), "let"));
 }
+
+// test "hash map" {
+// const test_allocator = std.testing.allocator;
+// var arena = std.heap.ArenaAllocator.init(test_allocator);
+// defer arena.deinit();
+// const allocator = arena.allocator();
+// var hash_map = std.HashMap(*const Expression, *const Expression, ExpressionContext, std.hash_map.default_max_load_percentage).initContext(allocator, ExpressionContext.init(allocator));
+// std.debug.print("format =    {any}\n", .{hash_map});
+// std.debug.print("type name = {s}", .{@typeName(@TypeOf(hash_map))});
+// }
 
 // test "extracting value from a prefix expression" {
 //     const test_allocator = std.testing.allocator;

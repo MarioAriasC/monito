@@ -162,6 +162,7 @@ pub const Parser = struct {
             .IF => Self.parseIfExpression,
             .FUNCTION => Self.parseFunctionLiteral,
             .STRING => Self.parseStringLiteral,
+            .LBRACE => Self.parseHashLiteral,
             else => null,
         };
     }
@@ -342,6 +343,38 @@ pub const Parser = struct {
         }
 
         return parameters.items;
+    }
+
+    fn parseHashLiteral(self: *Self) ?Expression {
+        const token = self.curToken;
+        var pairs = std.hash_map.HashMap(
+            *const Expression,
+            *const Expression,
+            ast.ExpressionContext,
+            std.hash_map.default_max_load_percentage,
+        ).initContext(self.allocator, ast.ExpressionContext.init(self.allocator));
+        while (!self.peekTokenIs(TokenType.RBRACE)) {
+            self.nextToken();
+            const key = self.parseExpression(Precedence.LOWEST);
+            if (!self.expectPeek(TokenType.COLON)) {
+                return null;
+            }
+            self.nextToken();
+            const value = self.parseExpression(Precedence.LOWEST);
+            if (heapExpression(self.allocator, key)) |not_null_key| {
+                if (heapExpression(self.allocator, value)) |not_null_value| {
+                    pairs.put(not_null_key, not_null_value) catch unreachable;
+                }
+            }
+            if (!self.peekTokenIs(TokenType.RBRACE) and !self.expectPeek(TokenType.COMMA)) {
+                return null;
+            }
+        }
+        if (!self.expectPeek(TokenType.RBRACE)) {
+            return null;
+        } else {
+            return ast.HashLiteral.init(self.allocator, token, pairs).asExpression();
+        }
     }
 
     fn parseInfixExpression(self: *Self, left: ?Expression) ?Expression {
@@ -854,6 +887,36 @@ test "parsing index expression" {
     try testInfixExpression(index_expression.index.?.infixExpression, Payload{ .int = 1 }, "+", Payload{ .int = 1 });
 }
 
+test "hash literal string keys" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const input =
+        \\{"one":1, "two":2, "three":3}
+    ;
+    const program = createProgram(input, allocator);
+    const hash_literal = program.statements[0].expressionStatement.expression.?.hashLiteral;
+    try expect(hash_literal.pairs.count() == 3);
+    var expected = std.hash_map.StringHashMap(i64).init(allocator);
+    try expected.put("one", 1);
+    try expected.put("two", 2);
+    try expected.put("three", 3);
+    var iterator = hash_literal.pairs.iterator();
+    while (iterator.next()) |entry| {
+        const key = entry.key_ptr;
+        const key_str = std.fmt.allocPrint(allocator, "{s}", .{key.*}) catch unreachable;
+        // std.debug.print("key_str = {s}\n", .{key_str});
+        const opt_value = expected.get(key_str);
+        if (opt_value) |value| {
+            try testLiteralExpression(entry.value_ptr.*.*, Payload{ .int = value });
+        } else {
+            try expect(false);
+        }
+    }
+}
+
 fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []const u8, right: Payload) !void {
     if (infix.left) |l| {
         try testLiteralExpression(l.*, left);
@@ -870,6 +933,8 @@ fn testInfixExpression(infix: ast.InfixExpression, left: Payload, operator: []co
 }
 
 fn testLiteralExpression(expression: ?ast.Expression, expectedValue: Payload) !void {
+    // std.debug.print("expression = {?}\n", .{expression});
+    // std.debug.print("expected   = {any}\n", .{expectedValue});
     try switch (expectedValue) {
         .int => |int| testLongLiteral(expression, int),
         .boolean => |b| testBooleanLiteral(expression, b),
