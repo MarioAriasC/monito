@@ -15,7 +15,7 @@ pub const Evaluator = struct {
                 switch (r) {
                     .returnValue => |returnValue| return returnValue.value.*,
                     .err => |err| return err.asObject(),
-                    else => return r,
+                    else => continue,
                 }
             } else {
                 return null;
@@ -25,6 +25,7 @@ pub const Evaluator = struct {
     }
 
     fn evalStatement(allocator: std.mem.Allocator, statement: ast.Statement, env: Environment) ?objects.Object {
+        print("statement: {}\n", .{statement});
         switch (statement) {
             .expressionStatement => |exp_statement| return evalExpression(allocator, exp_statement.expression, env),
             // .letStatement => |let_statement| return evalLetStatement(let_statement, env),
@@ -35,11 +36,53 @@ pub const Evaluator = struct {
     }
 
     fn evalExpression(allocator: std.mem.Allocator, expression: ?ast.Expression, env: Environment) ?objects.Object {
-        _ = env;
         if (expression) |exp| {
+
+            // print("exp type: {}\n", .{@typeInfo(@TypeOf(exp)).Union});
             switch (exp) {
                 .integerLiteral => |literal| return objects.Integer.init(allocator, literal.value).asObject(),
-                else => return null,
+                .prefixExpression => |prefix| return evalPrefixExpression(allocator, prefix, env),
+                else => return blk: {
+                    print("exp:{}, type={}\n", .{ exp, std.meta.activeTag(exp) });
+                    break :blk null;
+                },
+            }
+        } else {
+            return null;
+        }
+    }
+
+    fn evalMinusPrefixOperatorExpression(allocator: std.mem.Allocator, object: objects.Object) objects.Object {
+        switch (object) {
+            .integer => |integer| return objects.Integer.init(allocator, -integer.value).asObject(),
+            else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "Unknown Operator -{}", .{std.meta.activeTag(object)}) catch unreachable).asObject(),
+        }
+    }
+
+    fn evalBangOperatorExpression(object: objects.Object) objects.Object {
+        return object;
+    }
+
+    fn evalPrefixExpression(allocator: std.mem.Allocator, prefix: ast.PrefixExpression, env: Environment) ?objects.Object {
+        const right = evalExpression(allocator, prefix.right.?.*, env);
+        const body = struct {
+            operator: []const u8,
+            fn exec(self: @This(), alloc: std.mem.Allocator, r: objects.Object) ?objects.Object {
+                switch (self.operator[0]) {
+                    '!' => return evalBangOperatorExpression(r),
+                    '-' => return evalMinusPrefixOperatorExpression(alloc, r),
+                    else => return objects.Error.init(alloc, std.fmt.allocPrint(alloc, "Unknown operator {s}{}", .{ self.operator, std.meta.activeTag(r) }) catch unreachable).asObject(),
+                }
+            }
+        };
+        return ifError(allocator, right, body{ .operator = prefix.operator });
+    }
+
+    fn ifError(allocator: std.mem.Allocator, object: ?objects.Object, body: anytype) ?objects.Object {
+        if (object) |obj| {
+            switch (obj) {
+                .err => |e| return e.asObject(),
+                else => |o| return body.exec(allocator, o),
             }
         } else {
             return null;
@@ -63,6 +106,10 @@ test "eval integer expressions" {
     const allocator = arena.allocator();
     const tests = [_]TestDataInt{
         TestDataInt{ .input = "5", .expected = 5 },
+        TestDataInt{ .input = "10", .expected = 10 },
+        TestDataInt{ .input = "-5", .expected = -5 },
+        TestDataInt{ .input = "-10", .expected = -10 },
+        // TestDataInt{ .input = "-10", .expected = -10 },
     };
     try testInt(&tests, allocator);
 }
