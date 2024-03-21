@@ -43,7 +43,7 @@ pub const Evaluator = struct {
                 .integerLiteral => |literal| return objects.Integer.init(allocator, literal.value).asObject(),
                 .prefixExpression => |prefix| return evalPrefixExpression(allocator, prefix, env),
                 else => return blk: {
-                    print("exp:{}, type={}\n", .{ exp, std.meta.activeTag(exp) });
+                    print("unmanaged expression:{}, type={}\n", .{ exp, std.meta.activeTag(exp) });
                     break :blk null;
                 },
             }
@@ -67,7 +67,7 @@ pub const Evaluator = struct {
         const right = evalExpression(allocator, prefix.right.?.*, env);
         const body = struct {
             operator: []const u8,
-            fn exec(self: @This(), alloc: std.mem.Allocator, r: objects.Object) ?objects.Object {
+            fn invoke(self: @This(), alloc: std.mem.Allocator, r: objects.Object) ?objects.Object {
                 switch (self.operator[0]) {
                     '!' => return evalBangOperatorExpression(r),
                     '-' => return evalMinusPrefixOperatorExpression(alloc, r),
@@ -82,7 +82,7 @@ pub const Evaluator = struct {
         if (object) |obj| {
             switch (obj) {
                 .err => |e| return e.asObject(),
-                else => |o| return body.exec(allocator, o),
+                else => |o| return body.invoke(allocator, o),
             }
         } else {
             return null;
@@ -109,7 +109,7 @@ test "eval integer expressions" {
         TestDataInt{ .input = "10", .expected = 10 },
         TestDataInt{ .input = "-5", .expected = -5 },
         TestDataInt{ .input = "-10", .expected = -10 },
-        // TestDataInt{ .input = "-10", .expected = -10 },
+        // TestDataInt{ .input = "5 + 5 + 5 + 5 -10", .expected = 10 },
     };
     try testInt(&tests, allocator);
 }
