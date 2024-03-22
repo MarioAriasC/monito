@@ -7,6 +7,12 @@ pub const Object = union(enum) {
     returnValue: ReturnValue,
     err: Error,
 
+    pub fn inspect(self: Self, allocator: std.mem.Allocator) []const u8 {
+        switch (self) {
+            inline else => |impl| impl.inspect(allocator),
+        }
+    }
+
     pub fn format(
         self: Self,
         comptime fmt: []const u8,
@@ -101,6 +107,17 @@ pub const Integer = struct {
     pub fn asObject(self: Self) Object {
         return Object{ .integer = self };
     }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("Integer(value={d})", .{self.value});
+    }
 };
 
 pub const ReturnValue = struct {
@@ -112,6 +129,17 @@ pub const ReturnValue = struct {
         self.value = value;
         return self.*;
     }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("ReturnValue(value={})", .{self.value});
+    }
 };
 
 pub const Error = struct {
@@ -122,6 +150,17 @@ pub const Error = struct {
         var self = allocator.create(Self) catch unreachable;
         self.message = message;
         return self.*;
+    }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("Error(messaeg='{s}')", .{self.message});
     }
 
     pub fn asObject(self: Self) Object {

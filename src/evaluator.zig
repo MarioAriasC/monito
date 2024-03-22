@@ -25,7 +25,7 @@ pub const Evaluator = struct {
     }
 
     fn evalStatement(allocator: std.mem.Allocator, statement: ast.Statement, env: Environment) ?objects.Object {
-        print("statement: {}\n", .{statement});
+        // print("statement: {}\n", .{statement});
         switch (statement) {
             .expressionStatement => |exp_statement| return evalExpression(allocator, exp_statement.expression, env),
             // .letStatement => |let_statement| return evalLetStatement(let_statement, env),
@@ -42,6 +42,7 @@ pub const Evaluator = struct {
             switch (exp) {
                 .integerLiteral => |literal| return objects.Integer.init(allocator, literal.value).asObject(),
                 .prefixExpression => |prefix| return evalPrefixExpression(allocator, prefix, env),
+                .infixExpression => |infix| return evalInfixExpression(allocator, infix, env),
                 else => return blk: {
                     print("unmanaged expression:{}, type={}\n", .{ exp, std.meta.activeTag(exp) });
                     break :blk null;
@@ -78,6 +79,39 @@ pub const Evaluator = struct {
         return ifError(allocator, right, body{ .operator = prefix.operator });
     }
 
+    fn evalInfix(allocator: std.mem.Allocator, operator: []const u8, left: objects.Object, right: objects.Object) objects.Object {
+        if (@as(objects.Object, left) == objects.Object.integer and @as(objects.Object, right) == objects.Object.integer) {
+            switch (operator[0]) {
+                '+' => return objects.Integer.init(allocator, left.integer.value + right.integer.value).asObject(),
+                '-' => return objects.Integer.init(allocator, left.integer.value - right.integer.value).asObject(),
+                '*' => return objects.Integer.init(allocator, left.integer.value * right.integer.value).asObject(),
+                '/' => return objects.Integer.init(allocator, @divExact(left.integer.value, right.integer.value)).asObject(),
+                else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unknown operator: {} {s} {}", .{ std.meta.activeTag(left), operator, std.meta.activeTag(right) }) catch unreachable).asObject(),
+            }
+        }
+        return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unknown operator: {} {s} {}", .{ std.meta.activeTag(left), operator, std.meta.activeTag(right) }) catch unreachable).asObject();
+    }
+
+    fn evalInfixExpression(allocator: std.mem.Allocator, infix: ast.InfixExpression, env: Environment) ?objects.Object {
+        const left = evalExpression(allocator, infix.left.?.*, env);
+        const body = struct {
+            _infix: ast.InfixExpression,
+            _env: Environment,
+            fn invoke(self: @This(), alloc: std.mem.Allocator, l: objects.Object) ?objects.Object {
+                const right = evalExpression(alloc, self._infix.right.?.*, self._env);
+                const inner = struct {
+                    _l: objects.Object,
+                    __infix: ast.InfixExpression,
+                    fn invoke(_self: @This(), _alloc: std.mem.Allocator, r: objects.Object) ?objects.Object {
+                        return evalInfix(_alloc, _self.__infix.operator, _self._l, r);
+                    }
+                };
+                return ifError(alloc, right, inner{ ._l = l, .__infix = self._infix });
+            }
+        };
+        return ifError(allocator, left, body{ ._infix = infix, ._env = env });
+    }
+
     fn ifError(allocator: std.mem.Allocator, object: ?objects.Object, body: anytype) ?objects.Object {
         if (object) |obj| {
             switch (obj) {
@@ -109,7 +143,17 @@ test "eval integer expressions" {
         TestDataInt{ .input = "10", .expected = 10 },
         TestDataInt{ .input = "-5", .expected = -5 },
         TestDataInt{ .input = "-10", .expected = -10 },
-        // TestDataInt{ .input = "5 + 5 + 5 + 5 -10", .expected = 10 },
+        TestDataInt{ .input = "5 + 5 + 5 + 5 -10", .expected = 10 },
+        TestDataInt{ .input = "2 * 2 * 2 * 2 * 2", .expected = 32 },
+        TestDataInt{ .input = "-50 + 100 + -50", .expected = 0 },
+        TestDataInt{ .input = "5 * 2 + 10", .expected = 20 },
+        TestDataInt{ .input = "5 + 2 * 10", .expected = 25 },
+        TestDataInt{ .input = "20 + 2 * -10", .expected = 0 },
+        TestDataInt{ .input = "50 / 2 * 2 + 10", .expected = 60 },
+        TestDataInt{ .input = "2 * (5 + 10)", .expected = 30 },
+        TestDataInt{ .input = "3 * 3 * 3 + 10", .expected = 37 },
+        TestDataInt{ .input = "3 * (3 * 3) + 10", .expected = 37 },
+        TestDataInt{ .input = "(5 + 10 * 2 + 15 / 3) * 2 + -10", .expected = 50 },
     };
     try testInt(&tests, allocator);
 }
@@ -118,6 +162,7 @@ fn testInt(tests: []const TestDataInt, allocator: std.mem.Allocator) !void {
     for (tests) |t| {
         const opt_object = testEval(allocator, t.input);
         if (opt_object) |object| {
+            // std.debug.print("object:{}\n", .{object});
             try expect(object.integer.value == t.expected);
         } else {
             try expect(false);
