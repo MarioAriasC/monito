@@ -4,6 +4,7 @@ pub const Object = union(enum) {
     const Self = @This();
 
     integer: Integer,
+    boolean: Boolean,
     returnValue: ReturnValue,
     err: Error,
 
@@ -119,6 +120,57 @@ pub const Integer = struct {
         try writer.print("Integer(value={d})", .{self.value});
     }
 };
+
+pub const Boolean = struct {
+    const Self = @This();
+    value: bool,
+
+    pub fn init(allocator: std.mem.Allocator, value: bool) Self {
+        var self = allocator.create(Self) catch unreachable;
+        self.value = value;
+        return self.*;
+    }
+
+    pub fn asObject(self: Self) Object {
+        return Object{ .boolean = self };
+    }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("Boolean(value={})", .{self.value});
+    }
+};
+
+var TRUE: ?Object = null;
+var FALSE: ?Object = null;
+
+pub fn booleanAsObject(allocator: std.mem.Allocator, value: bool) Object {
+    if (value) {
+        if (TRUE == null) {
+            TRUE = Boolean.init(allocator, value).asObject();
+        }
+        return TRUE.?;
+    } else {
+        if (FALSE == null) {
+            FALSE = Boolean.init(allocator, value).asObject();
+        }
+        return FALSE.?;
+    }
+}
+
+pub fn True() Object {
+    return TRUE.?;
+}
+
+pub fn False() Object {
+    return FALSE.?;
+}
 
 pub const ReturnValue = struct {
     const Self = @This();
