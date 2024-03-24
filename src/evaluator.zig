@@ -30,7 +30,7 @@ pub const Evaluator = struct {
         switch (statement) {
             .expressionStatement => |exp_statement| return evalExpression(allocator, exp_statement.expression, env),
             // .letStatement => |let_statement| return evalLetStatement(let_statement, env),
-            // .blockStatement => |block_statement| return evalBlockStatement(block_statement, env),
+            .blockStatement => |block_statement| return evalBlockStatement(allocator, block_statement, env),
             // .returnStatement => |return_statement| return evalReturnStatement(return_statement, env),
             else => return blk: {
                 print("unmanaged statement:{}, type={}\n", .{ statement, std.meta.activeTag(statement) });
@@ -48,6 +48,7 @@ pub const Evaluator = struct {
                 .prefixExpression => |prefix| return evalPrefixExpression(allocator, prefix, env),
                 .infixExpression => |infix| return evalInfixExpression(allocator, infix, env),
                 .booleanLiteral => |literal| return objects.booleanAsObject(allocator, literal.value),
+                .ifExpression => |if_expression| return evalIfExpression(allocator, if_expression, env),
                 else => return blk: {
                     print("unmanaged expression:{}, type={}\n", .{ exp, std.meta.activeTag(exp) });
                     break :blk null;
@@ -56,6 +57,56 @@ pub const Evaluator = struct {
         } else {
             return null;
         }
+    }
+
+    fn isTruthy(allocator: std.mem.Allocator, object: objects.Object) bool {
+        if (std.meta.eql(object, objects.Nil(allocator))) {
+            return false;
+        }
+        if (std.meta.eql(object, objects.True())) {
+            return true;
+        }
+        if (std.meta.eql(object, objects.False())) {
+            return false;
+        }
+        return true;
+    }
+
+    fn evalIfExpression(allocator: std.mem.Allocator, expression: ast.IfExpression, env: Environment) ?objects.Object {
+        const condition = evalExpression(allocator, expression.condition.?.*, env);
+        const body = struct {
+            if_expression: ast.IfExpression,
+            _env: Environment,
+            fn invoke(self: @This(), alloc: std.mem.Allocator, c: objects.Object) ?objects.Object {
+                if (isTruthy(alloc, c)) {
+                    return evalBlockStatement(alloc, self.if_expression.consequence.?, self._env);
+                } else {
+                    if (self.if_expression.alternative) |alternative| {
+                        return evalBlockStatement(alloc, alternative, self._env);
+                    } else {
+                        return objects.Nil(alloc);
+                    }
+                }
+            }
+        };
+        return ifError(allocator, condition, body{ .if_expression = expression, ._env = env });
+    }
+
+    fn evalBlockStatement(allocator: std.mem.Allocator, block: ast.BlockStatement, env: Environment) ?objects.Object {
+        var result: ?objects.Object = null;
+        if (block.statements) |statements| {
+            for (statements) |statement| {
+                result = evalStatement(allocator, statement.?.*, env);
+                if (result) |r| {
+                    switch (r) {
+                        .returnValue => |return_value| return return_value.asObject(),
+                        .err => |err| return err.asObject(),
+                        else => {},
+                    }
+                }
+            }
+        }
+        return result;
     }
 
     fn evalMinusPrefixOperatorExpression(allocator: std.mem.Allocator, object: objects.Object) objects.Object {
@@ -237,6 +288,12 @@ test "if else expression" {
     const Test = TestData(?i64);
     const tests = [_]Test{
         Test{ .input = "if (true) { 10 }", .expected = 10 },
+        Test{ .input = "if (false) { 10 }", .expected = null },
+        Test{ .input = "if (1) { 10 }", .expected = 10 },
+        Test{ .input = "if (1 < 2) { 10 }", .expected = 10 },
+        Test{ .input = "if (1 > 2) { 10 }", .expected = null },
+        Test{ .input = "if (1 > 2) { 10 } else { 20 }", .expected = 20 },
+        Test{ .input = "if (1 < 2) { 10 } else { 20 }", .expected = 10 },
     };
     for (tests) |t| {
         const opt_object = testEval(allocator, t.input);

@@ -202,6 +202,10 @@ pub const ReturnValue = struct {
         _ = options;
         try writer.print("ReturnValue(value={})", .{self.value});
     }
+
+    pub fn asObject(self: Self) Object {
+        return Object{ .returnValue = self };
+    }
 };
 
 pub const Error = struct {
