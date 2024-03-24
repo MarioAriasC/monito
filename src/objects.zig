@@ -7,6 +7,7 @@ pub const Object = union(enum) {
     boolean: Boolean,
     returnValue: ReturnValue,
     err: Error,
+    nil: _Nil,
 
     pub fn inspect(self: Self, allocator: std.mem.Allocator) []const u8 {
         switch (self) {
@@ -36,6 +37,7 @@ pub const ObjectValue = union(enum) {
     const Self = @This();
 
     integer: Integer,
+    boolean: Boolean,
 
     pub fn getValue(self: Self) Value {
         switch (self) {
@@ -149,6 +151,7 @@ pub const Boolean = struct {
 
 var TRUE: ?Object = null;
 var FALSE: ?Object = null;
+var NIL: ?Object = null;
 
 pub fn booleanAsObject(allocator: std.mem.Allocator, value: bool) Object {
     if (value) {
@@ -170,6 +173,13 @@ pub fn True() Object {
 
 pub fn False() Object {
     return FALSE.?;
+}
+
+pub fn Nil(allocator: std.mem.Allocator) Object {
+    if (NIL == null) {
+        NIL = _Nil.init(allocator).asObject();
+    }
+    return NIL.?;
 }
 
 pub const ReturnValue = struct {
@@ -217,5 +227,29 @@ pub const Error = struct {
 
     pub fn asObject(self: Self) Object {
         return Object{ .err = self };
+    }
+};
+
+const _Nil = struct {
+    const Self = @This();
+    pub fn init(allocator: std.mem.Allocator) Self {
+        var self = allocator.create(Self) catch unreachable;
+        return self.*;
+    }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        _ = self;
+        try writer.print("nil", .{});
+    }
+
+    pub fn asObject(self: Self) Object {
+        return Object{ .nil = self };
     }
 };

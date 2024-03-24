@@ -32,7 +32,10 @@ pub const Evaluator = struct {
             // .letStatement => |let_statement| return evalLetStatement(let_statement, env),
             // .blockStatement => |block_statement| return evalBlockStatement(block_statement, env),
             // .returnStatement => |return_statement| return evalReturnStatement(return_statement, env),
-            else => return null,
+            else => return blk: {
+                print("unmanaged statement:{}, type={}\n", .{ statement, std.meta.activeTag(statement) });
+                break :blk null;
+            },
         }
     }
 
@@ -62,8 +65,17 @@ pub const Evaluator = struct {
         }
     }
 
-    fn evalBangOperatorExpression(object: objects.Object) objects.Object {
-        return object;
+    fn evalBangOperatorExpression(allocator: std.mem.Allocator, object: objects.Object) objects.Object {
+        if (std.meta.eql(object, objects.True())) {
+            return objects.False();
+        }
+        if (std.meta.eql(object, objects.False())) {
+            return objects.True();
+        }
+        if (std.meta.eql(object, objects.Nil(allocator))) {
+            return objects.True();
+        }
+        return objects.False();
     }
 
     fn evalPrefixExpression(allocator: std.mem.Allocator, prefix: ast.PrefixExpression, env: Environment) ?objects.Object {
@@ -72,7 +84,7 @@ pub const Evaluator = struct {
             operator: []const u8,
             fn invoke(self: @This(), alloc: std.mem.Allocator, r: objects.Object) ?objects.Object {
                 switch (self.operator[0]) {
-                    '!' => return evalBangOperatorExpression(r),
+                    '!' => return evalBangOperatorExpression(alloc, r),
                     '-' => return evalMinusPrefixOperatorExpression(alloc, r),
                     else => return objects.Error.init(alloc, std.fmt.allocPrint(alloc, "Unknown operator {s}{}", .{ self.operator, std.meta.activeTag(r) }) catch unreachable).asObject(),
                 }
@@ -199,6 +211,45 @@ test "eval boolean expression" {
         TestDataBool{ .input = "(1 > 2) == false", .expected = true },
     };
     try testBool(&tests, allocator);
+}
+
+test "bang operator" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const tests = [_]TestDataBool{
+        TestDataBool{ .input = "!true", .expected = false },
+        TestDataBool{ .input = "!false", .expected = true },
+        TestDataBool{ .input = "!5", .expected = false },
+        TestDataBool{ .input = "!!true", .expected = true },
+        TestDataBool{ .input = "!!false", .expected = false },
+        TestDataBool{ .input = "!!5", .expected = true },
+    };
+    try testBool(&tests, allocator);
+}
+
+test "if else expression" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const Test = TestData(?i64);
+    const tests = [_]Test{
+        Test{ .input = "if (true) { 10 }", .expected = 10 },
+    };
+    for (tests) |t| {
+        const opt_object = testEval(allocator, t.input);
+        if (opt_object) |object| {
+            if (t.expected) |expected| {
+                try expect(object.integer.value == expected);
+            } else {
+                try expect(std.meta.eql(object, objects.Nil(allocator)));
+            }
+        } else {
+            try expect(false);
+        }
+    }
 }
 
 fn testBool(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {
