@@ -105,7 +105,7 @@ fn ptrNullableFormat(writer: anytype, comptime T: type, nullable: ?*const T, def
     }
 }
 
-fn nullableFormat(writer: anytype, comptime T: type, nullable: ?T, default: []const u8) !void {
+pub fn nullableFormat(writer: anytype, comptime T: type, nullable: ?T, default: []const u8) !void {
     if (nullable) |not_null| {
         try writer.print("{s}", .{not_null});
     } else {

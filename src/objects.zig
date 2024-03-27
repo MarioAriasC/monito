@@ -1,4 +1,6 @@
 const std = @import("std");
+const ast = @import("ast.zig");
+const Environment = @import("env.zig").Environment;
 
 pub const Object = union(enum) {
     const Self = @This();
@@ -8,6 +10,7 @@ pub const Object = union(enum) {
     returnValue: ReturnValue,
     err: Error,
     nil: _Nil,
+    function: Function,
 
     pub fn inspect(self: Self, allocator: std.mem.Allocator) []const u8 {
         switch (self) {
@@ -23,6 +26,13 @@ pub const Object = union(enum) {
     ) !void {
         switch (self) {
             inline else => |impl| try impl.format(fmt, options, writer),
+        }
+    }
+
+    pub fn isError(self: Self) bool {
+        switch (self) {
+            .err => return true,
+            else => return false,
         }
     }
 };
@@ -255,5 +265,44 @@ const _Nil = struct {
 
     pub fn asObject(self: Self) Object {
         return Object{ .nil = self };
+    }
+};
+
+pub const Function = struct {
+    const Self = @This();
+    parameters: ?[]*const ast.Identifier,
+    body: ?ast.BlockStatement,
+    env: *Environment,
+
+    pub fn init(allocator: std.mem.Allocator, parameters: ?[]*const ast.Identifier, body: ?ast.BlockStatement, env: *Environment) Self {
+        var self = allocator.create(Self) catch unreachable;
+        self.parameters = parameters;
+        self.body = body;
+        self.env = env;
+        return self.*;
+    }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("fn(", .{});
+        if (self.parameters) |parameters| {
+            for (parameters, 1..) |parameter, i| {
+                const sep = if (i == parameters.len) "" else ", ";
+                try writer.print("{s}{s}", .{ parameter, sep });
+            }
+        }
+        try writer.print(") {s}\n\t", .{"{"});
+        try ast.nullableFormat(writer, ast.BlockStatement, self.body, "");
+        try writer.print("\n{s}", .{"}"});
+    }
+
+    pub fn asObject(self: Self) Object {
+        return Object{ .function = self };
     }
 };

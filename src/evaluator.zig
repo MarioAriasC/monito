@@ -8,7 +8,7 @@ const strEql = @import("utils.zig").strEql;
 const print = std.debug.print;
 
 pub const Evaluator = struct {
-    pub fn eval(allocator: std.mem.Allocator, program: ast.Program, env: Environment) ?objects.Object {
+    pub fn eval(allocator: std.mem.Allocator, program: ast.Program, env: *Environment) ?objects.Object {
         var result: ?objects.Object = null;
         for (program.statements) |statement| {
             result = evalStatement(allocator, statement, env);
@@ -25,21 +25,17 @@ pub const Evaluator = struct {
         return result;
     }
 
-    fn evalStatement(allocator: std.mem.Allocator, statement: ast.Statement, env: Environment) ?objects.Object {
+    fn evalStatement(allocator: std.mem.Allocator, statement: ast.Statement, env: *Environment) ?objects.Object {
         // print("statement: {}\n", .{statement});
         switch (statement) {
             .expressionStatement => |exp_statement| return evalExpression(allocator, exp_statement.expression, env),
-            // .letStatement => |let_statement| return evalLetStatement(let_statement, env),
+            .letStatement => |let_statement| return evalLetStatement(allocator, let_statement, env),
             .blockStatement => |block_statement| return evalBlockStatement(allocator, block_statement, env),
-            // .returnStatement => |return_statement| return evalReturnStatement(return_statement, env),
-            else => return blk: {
-                print("unmanaged statement:{}, type={}\n", .{ statement, std.meta.activeTag(statement) });
-                break :blk null;
-            },
+            .returnStatement => |return_statement| return evalReturnStatement(allocator, return_statement, env),
         }
     }
 
-    fn evalExpression(allocator: std.mem.Allocator, expression: ?ast.Expression, env: Environment) ?objects.Object {
+    fn evalExpression(allocator: std.mem.Allocator, expression: ?ast.Expression, env: *Environment) ?objects.Object {
         if (expression) |exp| {
 
             // print("exp type: {}\n", .{@typeInfo(@TypeOf(exp)).Union});
@@ -49,14 +45,105 @@ pub const Evaluator = struct {
                 .infixExpression => |infix| return evalInfixExpression(allocator, infix, env),
                 .booleanLiteral => |literal| return objects.booleanAsObject(allocator, literal.value),
                 .ifExpression => |if_expression| return evalIfExpression(allocator, if_expression, env),
+                .functionLiteral => |function| return objects.Function.init(allocator, function.parameters, function.body, env).asObject(),
+                .callExpression => |call| return evalCallExpression(allocator, call, env),
+                .identifier => |id| return evalIdentifier(allocator, id, env.*),
                 else => return blk: {
-                    print("unmanaged expression:{}, type={}\n", .{ exp, std.meta.activeTag(exp) });
+                    std.debug.panic("unmanaged expression:{}, type={}\n", .{ exp, std.meta.activeTag(exp) });
                     break :blk null;
                 },
             }
         } else {
             return null;
         }
+    }
+
+    fn evalIdentifier(allocator: std.mem.Allocator, identifier: ast.Identifier, env: Environment) objects.Object {
+        const opt_value = env.get(identifier.value);
+        if (opt_value) |value| {
+            return value;
+        } else {
+            // TODO builtins
+            return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "identifier not found: {s}", .{identifier.value}) catch unreachable).asObject();
+        }
+    }
+
+    fn evalLetStatement(allocator: std.mem.Allocator, statement: ast.LetStatement, env: *Environment) ?objects.Object {
+        const value = evalExpression(allocator, statement.value, env);
+        const closure = struct {
+            let_statement: ast.LetStatement,
+            _env: *Environment,
+            fn invoke(self: @This(), alloc: std.mem.Allocator, v: objects.Object) ?objects.Object {
+                _ = alloc;
+                return self._env.put(self.let_statement.name.value, v);
+            }
+        };
+        const body = closure{ .let_statement = statement, ._env = env };
+        return ifError(allocator, value, body);
+    }
+
+    fn evalCallExpression(allocator: std.mem.Allocator, expression: ast.CallExpression, env: *Environment) ?objects.Object {
+        const function = evalExpression(allocator, expression.function.?.*, env);
+        const closure = struct {
+            call_expression: ast.CallExpression,
+            _env: *Environment,
+            fn invoke(self: @This(), alloc: std.mem.Allocator, f: objects.Object) ?objects.Object {
+                const args = evalExpressions(alloc, self.call_expression.arguments, self._env);
+                if (args.len == 1 and args[0].?.isError()) {
+                    return args[0];
+                }
+                return applyFunction(alloc, f, args);
+            }
+        };
+        return ifError(allocator, function, closure{ .call_expression = expression, ._env = env });
+    }
+
+    fn applyFunction(allocator: std.mem.Allocator, function: objects.Object, args: []const ?objects.Object) ?objects.Object {
+        switch (function) {
+            .function => |fun| return blk: {
+                var extend_env = extendFunctionEnv(allocator, fun, args);
+                if (fun.body) |body| {
+                    const opt_evaluated = evalBlockStatement(allocator, body, &extend_env);
+                    if (opt_evaluated) |evaluated| {
+                        switch (evaluated) {
+                            .returnValue => |return_value| break :blk return_value.value.*,
+                            else => break :blk evaluated,
+                        }
+                    } else {
+                        break :blk null;
+                    }
+                } else {
+                    break :blk null;
+                }
+            },
+            else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "not a function: {}", .{std.meta.activeTag(function)}) catch unreachable).asObject(),
+        }
+    }
+
+    fn extendFunctionEnv(allocator: std.mem.Allocator, fun: objects.Function, args: []const ?objects.Object) Environment {
+        var env = Environment.initWithOuter(allocator, fun.env);
+        if (fun.parameters) |parameters| {
+            for (parameters, 0..) |parameter, i| {
+                env.set(parameter.value, args[i].?);
+            }
+        }
+
+        return env;
+    }
+
+    fn evalExpressions(allocator: std.mem.Allocator, arguments: ?[]?*const ast.Expression, env: *Environment) []?objects.Object {
+        var args = std.ArrayList(?objects.Object).init(allocator);
+        for (arguments.?) |argument| {
+            const evaluated = evalExpression(allocator, argument.?.*, env);
+
+            if (evaluated.?.isError()) {
+                var error_wrapper = [_]?objects.Object{evaluated};
+                // return error_wrapper[0..error_wrapper.len];
+                return &error_wrapper;
+            }
+            args.append(evaluated) catch unreachable;
+        }
+        return args.items;
     }
 
     fn isTruthy(allocator: std.mem.Allocator, object: objects.Object) bool {
@@ -72,11 +159,11 @@ pub const Evaluator = struct {
         return true;
     }
 
-    fn evalIfExpression(allocator: std.mem.Allocator, expression: ast.IfExpression, env: Environment) ?objects.Object {
+    fn evalIfExpression(allocator: std.mem.Allocator, expression: ast.IfExpression, env: *Environment) ?objects.Object {
         const condition = evalExpression(allocator, expression.condition.?.*, env);
-        const body = struct {
+        const closure = struct {
             if_expression: ast.IfExpression,
-            _env: Environment,
+            _env: *Environment,
             fn invoke(self: @This(), alloc: std.mem.Allocator, c: objects.Object) ?objects.Object {
                 if (isTruthy(alloc, c)) {
                     return evalBlockStatement(alloc, self.if_expression.consequence.?, self._env);
@@ -89,10 +176,21 @@ pub const Evaluator = struct {
                 }
             }
         };
-        return ifError(allocator, condition, body{ .if_expression = expression, ._env = env });
+        return ifError(allocator, condition, closure{ .if_expression = expression, ._env = env });
     }
 
-    fn evalBlockStatement(allocator: std.mem.Allocator, block: ast.BlockStatement, env: Environment) ?objects.Object {
+    fn evalReturnStatement(allocator: std.mem.Allocator, return_statement: ast.ReturnStatement, env: *Environment) ?objects.Object {
+        const value = evalExpression(allocator, return_statement.returnValue, env);
+        const closure = struct {
+            fn invoke(self: @This(), alloc: std.mem.Allocator, r: objects.Object) ?objects.Object {
+                _ = self;
+                return objects.ReturnValue.init(alloc, &r).asObject();
+            }
+        };
+        return ifError(allocator, value, closure{});
+    }
+
+    fn evalBlockStatement(allocator: std.mem.Allocator, block: ast.BlockStatement, env: *Environment) ?objects.Object {
         var result: ?objects.Object = null;
         if (block.statements) |statements| {
             for (statements) |statement| {
@@ -129,9 +227,9 @@ pub const Evaluator = struct {
         return objects.False();
     }
 
-    fn evalPrefixExpression(allocator: std.mem.Allocator, prefix: ast.PrefixExpression, env: Environment) ?objects.Object {
+    fn evalPrefixExpression(allocator: std.mem.Allocator, prefix: ast.PrefixExpression, env: *Environment) ?objects.Object {
         const right = evalExpression(allocator, prefix.right.?.*, env);
-        const body = struct {
+        const closure = struct {
             operator: []const u8,
             fn invoke(self: @This(), alloc: std.mem.Allocator, r: objects.Object) ?objects.Object {
                 switch (self.operator[0]) {
@@ -141,7 +239,7 @@ pub const Evaluator = struct {
                 }
             }
         };
-        return ifError(allocator, right, body{ .operator = prefix.operator });
+        return ifError(allocator, right, closure{ .operator = prefix.operator });
     }
 
     fn evalInfix(allocator: std.mem.Allocator, operator: []const u8, left: objects.Object, right: objects.Object) objects.Object {
@@ -169,31 +267,31 @@ pub const Evaluator = struct {
         return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unknown operator: {} {s} {}", .{ std.meta.activeTag(left), operator, std.meta.activeTag(right) }) catch unreachable).asObject();
     }
 
-    fn evalInfixExpression(allocator: std.mem.Allocator, infix: ast.InfixExpression, env: Environment) ?objects.Object {
+    fn evalInfixExpression(allocator: std.mem.Allocator, infix: ast.InfixExpression, env: *Environment) ?objects.Object {
         const left = evalExpression(allocator, infix.left.?.*, env);
-        const body = struct {
+        const closure = struct {
             _infix: ast.InfixExpression,
-            _env: Environment,
+            _env: *Environment,
             fn invoke(self: @This(), alloc: std.mem.Allocator, l: objects.Object) ?objects.Object {
                 const right = evalExpression(alloc, self._infix.right.?.*, self._env);
-                const inner = struct {
+                const inner_closure = struct {
                     _l: objects.Object,
                     __infix: ast.InfixExpression,
                     fn invoke(_self: @This(), _alloc: std.mem.Allocator, r: objects.Object) ?objects.Object {
                         return evalInfix(_alloc, _self.__infix.operator, _self._l, r);
                     }
                 };
-                return ifError(alloc, right, inner{ ._l = l, .__infix = self._infix });
+                return ifError(alloc, right, inner_closure{ ._l = l, .__infix = self._infix });
             }
         };
-        return ifError(allocator, left, body{ ._infix = infix, ._env = env });
+        return ifError(allocator, left, closure{ ._infix = infix, ._env = env });
     }
 
-    fn ifError(allocator: std.mem.Allocator, object: ?objects.Object, body: anytype) ?objects.Object {
+    fn ifError(allocator: std.mem.Allocator, object: ?objects.Object, closure: anytype) ?objects.Object {
         if (object) |obj| {
             switch (obj) {
                 .err => |e| return e.asObject(),
-                else => |o| return body.invoke(allocator, o),
+                else => |o| return closure.invoke(allocator, o),
             }
         } else {
             return null;
@@ -309,11 +407,48 @@ test "if else expression" {
     }
 }
 
+test "return statements" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const tests = [_]TestDataInt{
+        TestDataInt{ .input = "return 10;", .expected = 10 },
+        TestDataInt{ .input = "return 10; 9;", .expected = 10 },
+        TestDataInt{ .input = "return 2 * 5; 9;", .expected = 10 },
+        TestDataInt{ .input = "9; return 2 * 5; 9;", .expected = 10 },
+        TestDataInt{ .input = 
+        \\ if(10 > 1){
+        \\  if(10 > 1){
+        \\      return 10;
+        \\  }
+        \\  return 1;
+        \\ }
+        , .expected = 10 },
+        TestDataInt{ .input = 
+        \\  let f = fn(x){
+        \\    return x;
+        \\    x + 10;
+        \\  };
+        \\  f(10);
+        , .expected = 10 },
+        TestDataInt{ .input = 
+        \\  let f = fn(x) {
+        \\      let result = x + 10;
+        \\      return result;
+        \\      return 10;
+        \\  };
+        \\  f(10);
+        , .expected = 20 },
+    };
+    try testInt(&tests, allocator);
+}
+
 fn testBool(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {
     for (tests) |t| {
         const opt_object = testEval(allocator, t.input);
         if (opt_object) |object| {
-            // std.debug.print("object:{}\n", .{object});
+            // print("object:{}\n", .{object});
             try expect(object.boolean.value == t.expected);
         } else {
             try expect(false);
@@ -325,7 +460,7 @@ fn testInt(tests: []const TestDataInt, allocator: std.mem.Allocator) !void {
     for (tests) |t| {
         const opt_object = testEval(allocator, t.input);
         if (opt_object) |object| {
-            // std.debug.print("object:{}\n", .{object});
+            // print("object:{}\n", .{object});
             try expect(object.integer.value == t.expected);
         } else {
             try expect(false);
@@ -338,7 +473,8 @@ fn testEval(allocator: std.mem.Allocator, input: []const u8) ?objects.Object {
     var parser = Parser.init(allocator, lexer);
     var program = parser.parseProgram();
     checkParserErrors(parser) catch unreachable;
-    return Evaluator.eval(allocator, program, Environment.init(allocator));
+    var env = Environment.init(allocator);
+    return Evaluator.eval(allocator, program, &env);
 }
 
 fn checkParserErrors(parser: Parser) !void {

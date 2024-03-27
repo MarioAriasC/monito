@@ -1,4 +1,5 @@
 const std = @import("std");
+const print = std.debug.print;
 const objects = @import("objects.zig");
 const Object = objects.Object;
 
@@ -10,6 +11,7 @@ pub const Environment = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         var self = allocator.create(Self) catch unreachable;
         self.store = std.hash_map.StringHashMap(Object).init(allocator);
+        self.outer = null;
         return self.*;
     }
 
@@ -20,18 +22,21 @@ pub const Environment = struct {
         return self.*;
     }
 
-    pub fn set(self: Self, name: []const u8, value: Object) void {
-        self.store.put(name, value);
+    pub fn set(self: *Self, name: []const u8, value: Object) void {
+        self.store.put(name, value) catch unreachable;
     }
 
-    pub fn put(self: Self, name: []const u8, value: Object) Object {
-        return self.store.fetchPut(name, value);
+    pub fn put(self: *Self, name: []const u8, value: Object) Object {
+        self.store.put(name, value) catch unreachable;
+        return self.store.get(name).?;
     }
 
     pub fn get(self: Self, name: []const u8) ?Object {
         const obj = self.store.get(name);
-        if (obj == null and self.outer != null) {
-            return self.store.get(name);
+        if (obj == null) {
+            if (self.outer) |outer| {
+                return outer.get(name);
+            }
         }
         return obj;
     }
