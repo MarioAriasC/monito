@@ -515,7 +515,7 @@ pub const ExpressionContext = struct {
         const fmt2 = self.format(expression2);
         defer self.allocator.free(fmt1);
         defer self.allocator.free(fmt2);
-        return std.mem.eql(u8, fmt1, fmt2);
+        return utils.strEql(fmt1, fmt2);
     }
 
     pub fn hash(self: Self, expression: *const Expression) u64 {
@@ -565,8 +565,12 @@ pub const HashLiteral = struct {
         _ = fmt;
         var iterator = self.pairs.iterator();
         try writer.print("{s}", .{"{"});
+        const size = self.pairs.count();
+        var i: u32 = 1;
         while (iterator.next()) |entry| {
-            try writer.print("{}:{}{s}", .{ entry.key_ptr, entry.value_ptr, ", " });
+            const separator = if (i == size) "" else ", ";
+            try writer.print("{}: {}{s}", .{ entry.key_ptr.*.*, entry.value_ptr.*.*, separator });
+            i = i + 1;
         }
         try writer.print("{s}", .{"}"});
     }

@@ -48,6 +48,9 @@ pub const Evaluator = struct {
                 .functionLiteral => |function| return objects.Function.init(allocator, function.parameters, function.body, env).asObject(),
                 .callExpression => |call| return evalCallExpression(allocator, call, env),
                 .identifier => |id| return evalIdentifier(allocator, id, env.*),
+                .stringLiteral => |literal| return objects.String.init(allocator, literal.value).asObject(),
+                .indexExpression => |index| return evalIndexExpression(allocator, index, env),
+                .hashLiteral => |literal| return evalHashLiteral(allocator, literal, env),
                 else => return blk: {
                     std.debug.panic("unmanaged expression:{}, type={}\n", .{ exp, std.meta.activeTag(exp) });
                     break :blk null;
@@ -55,6 +58,77 @@ pub const Evaluator = struct {
             }
         } else {
             return null;
+        }
+    }
+
+    fn evalHashLiteral(allocator: std.mem.Allocator, hash_literal: ast.HashLiteral, env: *Environment) ?objects.Object {
+        var pairs = std.hash_map.HashMap(
+            objects.HashKey,
+            objects.HashPair,
+            objects.HashKeyContext,
+            std.hash_map.default_max_load_percentage,
+        ).initContext(allocator, objects.HashKeyContext{});
+
+        var iterator = hash_literal.pairs.iterator();
+        while (iterator.next()) |entry| {
+            const opt_key = evalExpression(allocator, entry.key_ptr.*.*, env);
+            // print("opt_key:{?}\n", .{opt_key});
+            if (opt_key) |key| {
+                if (key.isError()) {
+                    return key;
+                }
+                if (key.isHashable()) {
+                    const opt_value = evalExpression(allocator, entry.value_ptr.*.*, env);
+                    // print("opt_value:{?}\n", .{opt_value});
+                    if (opt_value) |value| {
+                        if (value.isError()) {
+                            return value;
+                        }
+                        pairs.put(key.hashKey(allocator).?, objects.HashPair{ .key = key, .value = value }) catch unreachable;
+                        // print("pairs:{}\n", .{pairs});
+                    } else {
+                        return null;
+                    }
+                } else {
+                    return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unusable as a hash key: {s}", .{key.typeDesc()}) catch unreachable).asObject();
+                }
+            } else {
+                return null;
+            }
+        }
+        return objects.Hash.init(allocator, pairs).asObject();
+    }
+
+    fn evalIndexExpression(allocator: std.mem.Allocator, index_expression: ast.IndexExpression, env: *Environment) ?objects.Object {
+        const left = evalExpression(allocator, index_expression.left.?.*, env);
+        if (left) |l| {
+            if (l.isError()) {
+                return l;
+            }
+        }
+        const index = evalExpression(allocator, index_expression.index.?.*, env);
+        if (index) |i| {
+            if (i.isError()) {
+                return i;
+            }
+        }
+
+        switch (left.?) {
+            .hash => |hash| return evalHashIndexExpression(allocator, hash, index.?),
+            else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "index operator not supported: {s}", .{left.?.typeDesc()}) catch unreachable).asObject(),
+        }
+    }
+
+    fn evalHashIndexExpression(allocator: std.mem.Allocator, hash: objects.Hash, index: objects.Object) objects.Object {
+        if (index.isHashable()) {
+            const opt_pair = hash.pairs.get(index.hashKey(allocator).?);
+            if (opt_pair) |pair| {
+                return pair.value;
+            } else {
+                return objects.Nil(allocator);
+            }
+        } else {
+            return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unusable as a hash key: {s}", .{index.typeDesc()}) catch unreachable).asObject();
         }
     }
 
@@ -116,7 +190,7 @@ pub const Evaluator = struct {
                     break :blk null;
                 }
             },
-            else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "not a function: {}", .{std.meta.activeTag(function)}) catch unreachable).asObject(),
+            else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "not a function: {s}", .{function.typeDesc()}) catch unreachable).asObject(),
         }
     }
 
@@ -210,7 +284,7 @@ pub const Evaluator = struct {
     fn evalMinusPrefixOperatorExpression(allocator: std.mem.Allocator, object: objects.Object) objects.Object {
         switch (object) {
             .integer => |integer| return objects.Integer.init(allocator, -integer.value).asObject(),
-            else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "Unknown Operator -{}", .{std.meta.activeTag(object)}) catch unreachable).asObject(),
+            else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unknown operator: -{s}", .{object.typeDesc()}) catch unreachable).asObject(),
         }
     }
 
@@ -235,7 +309,7 @@ pub const Evaluator = struct {
                 switch (self.operator[0]) {
                     '!' => return evalBangOperatorExpression(alloc, r),
                     '-' => return evalMinusPrefixOperatorExpression(alloc, r),
-                    else => return objects.Error.init(alloc, std.fmt.allocPrint(alloc, "Unknown operator {s}{}", .{ self.operator, std.meta.activeTag(r) }) catch unreachable).asObject(),
+                    else => return objects.Error.init(alloc, std.fmt.allocPrint(alloc, "Unknown operator {s}{s}", .{ self.operator, r.typeDesc() }) catch unreachable).asObject(),
                 }
             }
         };
@@ -255,7 +329,7 @@ pub const Evaluator = struct {
                 '=' => return objects.booleanAsObject(allocator, left.integer.value == right.integer.value),
                 // first character of "!="
                 '!' => return objects.booleanAsObject(allocator, left.integer.value != right.integer.value),
-                else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unknown operator: {} {s} {}", .{ std.meta.activeTag(left), operator, std.meta.activeTag(right) }) catch unreachable).asObject(),
+                else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unknown operator: {s} {s} {s}", .{ left.typeDesc(), operator, right.typeDesc() }) catch unreachable).asObject(),
             }
         }
         if (strEql(operator, "==")) {
@@ -264,7 +338,10 @@ pub const Evaluator = struct {
         if (strEql(operator, "!=")) {
             return objects.booleanAsObject(allocator, !std.meta.eql(left, right));
         }
-        return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unknown operator: {} {s} {}", .{ std.meta.activeTag(left), operator, std.meta.activeTag(right) }) catch unreachable).asObject();
+        if (!strEql(left.typeDesc(), right.typeDesc())) {
+            return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "type mismatch: {s} {s} {s}", .{ left.typeDesc(), operator, right.typeDesc() }) catch unreachable).asObject();
+        }
+        return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unknown operator: {s} {s} {s}", .{ left.typeDesc(), operator, right.typeDesc() }) catch unreachable).asObject();
     }
 
     fn evalInfixExpression(allocator: std.mem.Allocator, infix: ast.InfixExpression, env: *Environment) ?objects.Object {
@@ -442,6 +519,48 @@ test "return statements" {
         , .expected = 20 },
     };
     try testInt(&tests, allocator);
+}
+
+test "error handling" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const TestError = TestData([]const u8);
+    for ([_]TestError{
+        TestError{ .input = "5 + true;", .expected = "type mismatch: Integer + Boolean" },
+        TestError{ .input = "5 + true; 5;", .expected = "type mismatch: Integer + Boolean" },
+        TestError{ .input = "-true", .expected = "unknown operator: -Boolean" },
+        TestError{ .input = "true + false;", .expected = "unknown operator: Boolean + Boolean" },
+        TestError{ .input = "true + false + true + false;", .expected = "unknown operator: Boolean + Boolean" },
+        TestError{ .input = "5; true + false; 5", .expected = "unknown operator: Boolean + Boolean" },
+        TestError{ .input = "if(10 > 1) {true + false}", .expected = "unknown operator: Boolean + Boolean" },
+        TestError{ .input = 
+        \\  if (10 > 1) {
+        \\      if (10 > 1) {
+        \\          return true + false;
+        \\      }
+        \\
+        \\      return 1;
+        \\  }
+        , .expected = "unknown operator: Boolean + Boolean" },
+        TestError{ .input = "foobar", .expected = "identifier not found: foobar" },
+        TestError{ .input = 
+        \\ "Hello" - "World"
+        , .expected = "unknown operator: String - String" },
+        TestError{ .input = 
+        \\ {"name": "Monkey"}[fn(x) {x}];
+        , .expected = "unusable as a hash key: Function" },
+    }) |t| {
+        const opt_error = testEval(allocator, t.input);
+        if (opt_error) |object| {
+            // print("object:{s}\n", .{object.err.message});
+            // print("t     :{s}\n", .{t.expected});
+            try expect(strEql(object.err.message, t.expected));
+        } else {
+            try expect(false);
+        }
+    }
 }
 
 fn testBool(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {
