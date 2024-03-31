@@ -577,6 +577,21 @@ test "let statement" {
     try testInt(&tests, allocator);
 }
 
+test "function object" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const input = "fn(x){ x + 2; };";
+    const evaluated = testEval(allocator, input);
+    const function = evaluated.?.function;
+    try expect(function.parameters.?.len == 1);
+    const str_first = std.fmt.allocPrint(allocator, "{}", .{function.parameters.?[0]}) catch unreachable;
+    try expect(strEql(str_first, "x"));
+    const str_body = std.fmt.allocPrint(allocator, "{}", .{function.body.?}) catch unreachable;
+    try expect(strEql(str_body, "(x + 2)"));
+}
+
 fn testBool(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {
     for (tests) |t| {
         const opt_object = testEval(allocator, t.input);
