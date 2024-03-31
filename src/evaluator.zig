@@ -408,7 +408,7 @@ test "eval integer expressions" {
         TestDataInt{ .input = "3 * (3 * 3) + 10", .expected = 37 },
         TestDataInt{ .input = "(5 + 10 * 2 + 15 / 3) * 2 + -10", .expected = 50 },
     };
-    try testInt(&tests, allocator);
+    try testInts(&tests, allocator);
 }
 
 test "eval boolean expression" {
@@ -436,7 +436,7 @@ test "eval boolean expression" {
         TestDataBool{ .input = "(1 > 2) == true", .expected = false },
         TestDataBool{ .input = "(1 > 2) == false", .expected = true },
     };
-    try testBool(&tests, allocator);
+    try testBools(&tests, allocator);
 }
 
 test "bang operator" {
@@ -452,7 +452,7 @@ test "bang operator" {
         TestDataBool{ .input = "!!false", .expected = false },
         TestDataBool{ .input = "!!5", .expected = true },
     };
-    try testBool(&tests, allocator);
+    try testBools(&tests, allocator);
 }
 
 test "if else expression" {
@@ -494,7 +494,7 @@ test "return statements" {
         TestDataInt{ .input = "return 10; 9;", .expected = 10 },
         TestDataInt{ .input = "return 2 * 5; 9;", .expected = 10 },
         TestDataInt{ .input = "9; return 2 * 5; 9;", .expected = 10 },
-        TestDataInt{ .input = 
+        TestDataInt{ .input =
         \\ if(10 > 1){
         \\  if(10 > 1){
         \\      return 10;
@@ -502,14 +502,14 @@ test "return statements" {
         \\  return 1;
         \\ }
         , .expected = 10 },
-        TestDataInt{ .input = 
+        TestDataInt{ .input =
         \\  let f = fn(x){
         \\    return x;
         \\    x + 10;
         \\  };
         \\  f(10);
         , .expected = 10 },
-        TestDataInt{ .input = 
+        TestDataInt{ .input =
         \\  let f = fn(x) {
         \\      let result = x + 10;
         \\      return result;
@@ -518,7 +518,7 @@ test "return statements" {
         \\  f(10);
         , .expected = 20 },
     };
-    try testInt(&tests, allocator);
+    try testInts(&tests, allocator);
 }
 
 test "error handling" {
@@ -535,7 +535,7 @@ test "error handling" {
         TestError{ .input = "true + false + true + false;", .expected = "unknown operator: Boolean + Boolean" },
         TestError{ .input = "5; true + false; 5", .expected = "unknown operator: Boolean + Boolean" },
         TestError{ .input = "if(10 > 1) {true + false}", .expected = "unknown operator: Boolean + Boolean" },
-        TestError{ .input = 
+        TestError{ .input =
         \\  if (10 > 1) {
         \\      if (10 > 1) {
         \\          return true + false;
@@ -545,10 +545,10 @@ test "error handling" {
         \\  }
         , .expected = "unknown operator: Boolean + Boolean" },
         TestError{ .input = "foobar", .expected = "identifier not found: foobar" },
-        TestError{ .input = 
+        TestError{ .input =
         \\ "Hello" - "World"
         , .expected = "unknown operator: String - String" },
-        TestError{ .input = 
+        TestError{ .input =
         \\ {"name": "Monkey"}[fn(x) {x}];
         , .expected = "unusable as a hash key: Function" },
     }) |t| {
@@ -574,7 +574,7 @@ test "let statement" {
         TestDataInt{ .input = "let a = 5; let b = a; b;", .expected = 5 },
         TestDataInt{ .input = "let a = 5; let b = a; let c = a + b + 5; c;", .expected = 15 },
     };
-    try testInt(&tests, allocator);
+    try testInts(&tests, allocator);
 }
 
 test "function object" {
@@ -605,30 +605,58 @@ test "function application" {
         TestDataInt{ .input = "let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", .expected = 20 },
         TestDataInt{ .input = "fn(x) { x; }(5)", .expected = 5 },
     };
-    try testInt(&tests, allocator);
+    try testInts(&tests, allocator);
 }
 
-fn testBool(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {
+test "enclosing environments" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const input =
+        \\  let first = 10;
+        \\  let second = 10;
+        \\  let third = 10;
+        \\
+        \\  let ourFunction = fn(first) {
+        \\      let second = 20;
+        \\      first + second + third;
+        \\  };
+        \\
+        \\  ourFunction(20) + first + second;
+    ;
+    try testInt(TestDataInt{ .input = input, .expected = 70 }, allocator);
+}
+
+fn testBools(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {
     for (tests) |t| {
-        const opt_object = testEval(allocator, t.input);
-        if (opt_object) |object| {
-            // print("object:{}\n", .{object});
-            try expect(object.boolean.value == t.expected);
-        } else {
-            try expect(false);
-        }
+        try testBool(t, allocator);
     }
 }
 
-fn testInt(tests: []const TestDataInt, allocator: std.mem.Allocator) !void {
+fn testBool(t: TestDataBool, allocator: std.mem.Allocator) !void {
+    const opt_object = testEval(allocator, t.input);
+    if (opt_object) |object| {
+        // print("object:{}\n", .{object});
+        try expect(object.boolean.value == t.expected);
+    } else {
+        try expect(false);
+    }
+}
+
+fn testInts(tests: []const TestDataInt, allocator: std.mem.Allocator) !void {
     for (tests) |t| {
-        const opt_object = testEval(allocator, t.input);
-        if (opt_object) |object| {
-            // print("object:{}\n", .{object});
-            try expect(object.integer.value == t.expected);
-        } else {
-            try expect(false);
-        }
+        try testInt(t, allocator);
+    }
+}
+
+fn testInt(t: TestDataInt, allocator: std.mem.Allocator) !void {
+    const opt_object = testEval(allocator, t.input);
+    if (opt_object) |object| {
+        // print("object:{}\n", .{object});
+        try expect(object.integer.value == t.expected);
+    } else {
+        try expect(false);
     }
 }
 
