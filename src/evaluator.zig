@@ -563,6 +563,20 @@ test "error handling" {
     }
 }
 
+test "let statement" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const tests = [_]TestDataInt{
+        TestDataInt{ .input = "let a = 5; a;", .expected = 5 },
+        TestDataInt{ .input = "let a = 5 * 5; a;", .expected = 25 },
+        TestDataInt{ .input = "let a = 5; let b = a; b;", .expected = 5 },
+        TestDataInt{ .input = "let a = 5; let b = a; let c = a + b + 5; c;", .expected = 15 },
+    };
+    try testInt(&tests, allocator);
+}
+
 fn testBool(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {
     for (tests) |t| {
         const opt_object = testEval(allocator, t.input);
