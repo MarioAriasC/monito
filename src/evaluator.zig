@@ -592,6 +592,22 @@ test "function object" {
     try expect(strEql(str_body, "(x + 2)"));
 }
 
+test "function application" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const tests = [_]TestDataInt{
+        TestDataInt{ .input = "let identity = fn(x) { x; }; identity(5);", .expected = 5 },
+        TestDataInt{ .input = "let identity = fn(x) { return x; }; identity(5);", .expected = 5 },
+        TestDataInt{ .input = "let double = fn(x) { x * 2; }; double(5);", .expected = 10 },
+        TestDataInt{ .input = "let add = fn(x, y) { x + y; }; add(5, 5);", .expected = 10 },
+        TestDataInt{ .input = "let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", .expected = 20 },
+        TestDataInt{ .input = "fn(x) { x; }(5)", .expected = 5 },
+    };
+    try testInt(&tests, allocator);
+}
+
 fn testBool(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {
     for (tests) |t| {
         const opt_object = testEval(allocator, t.input);
