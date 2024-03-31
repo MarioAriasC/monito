@@ -341,6 +341,9 @@ pub const Evaluator = struct {
         if (!strEql(left.typeDesc(), right.typeDesc())) {
             return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "type mismatch: {s} {s} {s}", .{ left.typeDesc(), operator, right.typeDesc() }) catch unreachable).asObject();
         }
+        if (@as(objects.Object, left) == objects.Object.string and @as(objects.Object, right) == objects.Object.string and strEql(operator, "+")) {
+            return objects.String.init(allocator, std.fmt.allocPrint(allocator, "{s}{s}", .{ left.string.value, right.string.value }) catch unreachable).asObject();
+        }
         return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unknown operator: {s} {s} {s}", .{ left.typeDesc(), operator, right.typeDesc() }) catch unreachable).asObject();
     }
 
@@ -383,6 +386,7 @@ fn TestData(comptime T: type) type {
 
 const TestDataInt = TestData(i64);
 const TestDataBool = TestData(bool);
+const TestDataString = TestData([]const u8);
 
 const expect = std.testing.expect;
 
@@ -494,7 +498,7 @@ test "return statements" {
         TestDataInt{ .input = "return 10; 9;", .expected = 10 },
         TestDataInt{ .input = "return 2 * 5; 9;", .expected = 10 },
         TestDataInt{ .input = "9; return 2 * 5; 9;", .expected = 10 },
-        TestDataInt{ .input =
+        TestDataInt{ .input = 
         \\ if(10 > 1){
         \\  if(10 > 1){
         \\      return 10;
@@ -502,14 +506,14 @@ test "return statements" {
         \\  return 1;
         \\ }
         , .expected = 10 },
-        TestDataInt{ .input =
+        TestDataInt{ .input = 
         \\  let f = fn(x){
         \\    return x;
         \\    x + 10;
         \\  };
         \\  f(10);
         , .expected = 10 },
-        TestDataInt{ .input =
+        TestDataInt{ .input = 
         \\  let f = fn(x) {
         \\      let result = x + 10;
         \\      return result;
@@ -535,7 +539,7 @@ test "error handling" {
         TestError{ .input = "true + false + true + false;", .expected = "unknown operator: Boolean + Boolean" },
         TestError{ .input = "5; true + false; 5", .expected = "unknown operator: Boolean + Boolean" },
         TestError{ .input = "if(10 > 1) {true + false}", .expected = "unknown operator: Boolean + Boolean" },
-        TestError{ .input =
+        TestError{ .input = 
         \\  if (10 > 1) {
         \\      if (10 > 1) {
         \\          return true + false;
@@ -545,10 +549,10 @@ test "error handling" {
         \\  }
         , .expected = "unknown operator: Boolean + Boolean" },
         TestError{ .input = "foobar", .expected = "identifier not found: foobar" },
-        TestError{ .input =
+        TestError{ .input = 
         \\ "Hello" - "World"
         , .expected = "unknown operator: String - String" },
-        TestError{ .input =
+        TestError{ .input = 
         \\ {"name": "Monkey"}[fn(x) {x}];
         , .expected = "unusable as a hash key: Function" },
     }) |t| {
@@ -628,6 +632,28 @@ test "enclosing environments" {
     try testInt(TestDataInt{ .input = input, .expected = 70 }, allocator);
 }
 
+test "string literal" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const input =
+        \\ "Hello World!"
+    ;
+    try testString(TestDataString{ .input = input, .expected = "Hello World!" }, allocator);
+}
+
+test "string concatenation" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const input =
+        \\ "Hello" + " " + "World!"
+    ;
+    try testString(TestDataString{ .input = input, .expected = "Hello World!" }, allocator);
+}
+
 fn testBools(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {
     for (tests) |t| {
         try testBool(t, allocator);
@@ -655,6 +681,16 @@ fn testInt(t: TestDataInt, allocator: std.mem.Allocator) !void {
     if (opt_object) |object| {
         // print("object:{}\n", .{object});
         try expect(object.integer.value == t.expected);
+    } else {
+        try expect(false);
+    }
+}
+
+fn testString(t: TestDataString, allocator: std.mem.Allocator) !void {
+    const opt_object = testEval(allocator, t.input);
+    if (opt_object) |object| {
+        print("object: {}\n", .{object});
+        try expect(strEql(object.string.value, t.expected));
     } else {
         try expect(false);
     }
