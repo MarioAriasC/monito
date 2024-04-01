@@ -28,10 +28,10 @@ pub const Evaluator = struct {
     fn evalStatement(allocator: std.mem.Allocator, statement: ast.Statement, env: *Environment) ?objects.Object {
         // print("statement: {}\n", .{statement});
         switch (statement) {
-            .expressionStatement => |exp_statement| return evalExpression(allocator, exp_statement.expression, env),
-            .letStatement => |let_statement| return evalLetStatement(allocator, let_statement, env),
             .blockStatement => |block_statement| return evalBlockStatement(allocator, block_statement, env),
+            .expressionStatement => |exp_statement| return evalExpression(allocator, exp_statement.expression, env),
             .returnStatement => |return_statement| return evalReturnStatement(allocator, return_statement, env),
+            .letStatement => |let_statement| return evalLetStatement(allocator, let_statement, env),
         }
     }
 
@@ -40,14 +40,14 @@ pub const Evaluator = struct {
 
             // print("exp type: {}\n", .{@typeInfo(@TypeOf(exp)).Union});
             switch (exp) {
-                .integerLiteral => |literal| return objects.Integer.init(allocator, literal.value).asObject(),
-                .prefixExpression => |prefix| return evalPrefixExpression(allocator, prefix, env),
-                .infixExpression => |infix| return evalInfixExpression(allocator, infix, env),
-                .booleanLiteral => |literal| return objects.booleanAsObject(allocator, literal.value),
-                .ifExpression => |if_expression| return evalIfExpression(allocator, if_expression, env),
-                .functionLiteral => |function| return objects.Function.init(allocator, function.parameters, function.body, env).asObject(),
-                .callExpression => |call| return evalCallExpression(allocator, call, env),
                 .identifier => |id| return evalIdentifier(allocator, id, env.*),
+                .integerLiteral => |literal| return objects.Integer.init(allocator, literal.value).asObject(),
+                .infixExpression => |infix| return evalInfixExpression(allocator, infix, env),
+                .prefixExpression => |prefix| return evalPrefixExpression(allocator, prefix, env),
+                .ifExpression => |if_expression| return evalIfExpression(allocator, if_expression, env),
+                .callExpression => |call| return evalCallExpression(allocator, call, env),
+                .functionLiteral => |function| return objects.Function.init(allocator, function.parameters, function.body, env).asObject(),
+                .booleanLiteral => |literal| return objects.booleanAsObject(allocator, literal.value),
                 .stringLiteral => |literal| return objects.String.init(allocator, literal.value).asObject(),
                 .indexExpression => |index| return evalIndexExpression(allocator, index, env),
                 .hashLiteral => |literal| return evalHashLiteral(allocator, literal, env),
@@ -137,7 +137,15 @@ pub const Evaluator = struct {
         if (opt_value) |value| {
             return value;
         } else {
-            // TODO builtins
+            // print("Trying to get an identifier:{}\n", .{identifier});
+            // var all_builtins = objects.builtins(allocator);
+            // print("all_builtins:{}\n", .{all_builtins});
+            // const opt_builtin = all_builtins.get(identifier.value);
+            // if (opt_builtin) |builtin| {
+            // return builtin.asObject();
+            // } else {
+            // return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "identifier not found: {s}", .{identifier.value}) catch unreachable).asObject();
+            // }
             return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "identifier not found: {s}", .{identifier.value}) catch unreachable).asObject();
         }
     }
@@ -224,10 +232,10 @@ pub const Evaluator = struct {
         if (std.meta.eql(object, objects.Nil(allocator))) {
             return false;
         }
-        if (std.meta.eql(object, objects.True())) {
+        if (std.meta.eql(object, objects.True(allocator))) {
             return true;
         }
-        if (std.meta.eql(object, objects.False())) {
+        if (std.meta.eql(object, objects.False(allocator))) {
             return false;
         }
         return true;
@@ -289,16 +297,16 @@ pub const Evaluator = struct {
     }
 
     fn evalBangOperatorExpression(allocator: std.mem.Allocator, object: objects.Object) objects.Object {
-        if (std.meta.eql(object, objects.True())) {
-            return objects.False();
+        if (std.meta.eql(object, objects.True(allocator))) {
+            return objects.False(allocator);
         }
-        if (std.meta.eql(object, objects.False())) {
-            return objects.True();
+        if (std.meta.eql(object, objects.False(allocator))) {
+            return objects.True(allocator);
         }
         if (std.meta.eql(object, objects.Nil(allocator))) {
-            return objects.True();
+            return objects.True(allocator);
         }
-        return objects.False();
+        return objects.False(allocator);
     }
 
     fn evalPrefixExpression(allocator: std.mem.Allocator, prefix: ast.PrefixExpression, env: *Environment) ?objects.Object {
@@ -654,6 +662,37 @@ test "string concatenation" {
     try testString(TestDataString{ .input = input, .expected = "Hello World!" }, allocator);
 }
 
+// test "builtin functions" {
+//     const test_allocator = std.testing.allocator;
+//     var arena = std.heap.ArenaAllocator.init(test_allocator);
+//     defer arena.deinit();
+//     const allocator = arena.allocator();
+//     const Value = union(enum) {
+//         int: u64,
+//         message: []const u8,
+//         array: []u64,
+//         nil: ?u1,
+//     };
+
+//     const TestDataValue = TestData(Value);
+//     for ([_]TestDataValue{
+//         TestDataValue{ .input =
+//         \\ len("")
+//         , .expected = Value{ .int = 0 } },
+//     }) |t| {
+//         const opt_evaluated = testEval(allocator, t.input);
+//         if (opt_evaluated) |evaluated| {
+//             print("evaluated:{}\n", .{evaluated});
+//             switch (t.expected) {
+//                 .int => |int| try expect(evaluated.integer.value == int),
+//                 else => try expect(std.meta.eql(objects.Nil(allocator), evaluated)),
+//             }
+//         } else {
+//             try expect(false);
+//         }
+//     }
+// }
+
 fn testBools(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {
     for (tests) |t| {
         try testBool(t, allocator);
@@ -689,7 +728,7 @@ fn testInt(t: TestDataInt, allocator: std.mem.Allocator) !void {
 fn testString(t: TestDataString, allocator: std.mem.Allocator) !void {
     const opt_object = testEval(allocator, t.input);
     if (opt_object) |object| {
-        print("object: {}\n", .{object});
+        // print("object: {}\n", .{object});
         try expect(strEql(object.string.value, t.expected));
     } else {
         try expect(false);

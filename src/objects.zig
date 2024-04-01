@@ -14,6 +14,7 @@ pub const Object = union(enum) {
     function: Function,
     string: String,
     hash: Hash,
+    builtin: BuiltinFunction,
 
     pub fn inspect(self: Self, allocator: std.mem.Allocator) []const u8 {
         switch (self) {
@@ -42,6 +43,7 @@ pub const Object = union(enum) {
             .function => return "Function",
             .string => return "String",
             .hash => return "Hash",
+            .builtin => return "Builtin Function",
         }
     }
 
@@ -274,23 +276,23 @@ var NIL: ?Object = null;
 
 pub fn booleanAsObject(allocator: std.mem.Allocator, value: bool) Object {
     if (value) {
-        if (TRUE == null) {
-            TRUE = Boolean.init(allocator, value).asObject();
-        }
-        return TRUE.?;
+        return True(allocator);
     } else {
-        if (FALSE == null) {
-            FALSE = Boolean.init(allocator, value).asObject();
-        }
-        return FALSE.?;
+        return False(allocator);
     }
 }
 
-pub fn True() Object {
+pub fn True(allocator: std.mem.Allocator) Object {
+    if (TRUE == null) {
+        TRUE = Boolean.init(allocator, true).asObject();
+    }
     return TRUE.?;
 }
 
-pub fn False() Object {
+pub fn False(allocator: std.mem.Allocator) Object {
+    if (FALSE == null) {
+        FALSE = Boolean.init(allocator, false).asObject();
+    }
     return FALSE.?;
 }
 
@@ -415,3 +417,76 @@ pub const Function = struct {
         return Object{ .function = self };
     }
 };
+
+pub const BuiltinFunction = struct {
+    const Self = @This();
+    name: []const u8,
+    function: *const fn (std.mem.Allocator, []?Object) ?Object,
+
+    pub fn init(allocator: std.mem.Allocator, name: []const u8, function: *const fn (std.mem.Allocator, []?Object) ?Object) Self {
+        var self = allocator.create(Self) catch unreachable;
+        self.name = name;
+        self.function = function;
+        return self.*;
+    }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{s} -> Builtin Function", .{self.name});
+    }
+
+    pub fn asObject(self: Self) Object {
+        return Object{ .builtin = self };
+    }
+};
+
+var builts: ?std.hash_map.StringHashMap(BuiltinFunction) = null;
+
+fn argSizeCheck(
+    allocator: std.mem.Allocator,
+    expected_size: u64,
+    args: []?Object,
+    body: *const fn (std.mem.Allocator, []?Object) ?Object,
+) ?Object {
+    const length = args.len;
+    if (length == expected_size) {
+        return Error.init(allocator, std.fmt.allocPrint(allocator, "wrong number of arguments, got={d}, want={d}", .{ length, expected_size }) catch unreachable).asObject();
+    } else {
+        return body(allocator, args);
+    }
+}
+
+fn bodyLen(allocator: std.mem.Allocator, args: []?Object) ?Object {
+    const opt_arg = args[0];
+    if (opt_arg) |arg| {
+        switch (arg) {
+            .string => |string| return Integer.init(allocator, @intCast(string.value.len)).asObject(),
+            else => return Error.init(allocator, std.fmt.allocPrint(allocator, "argumment to `len` not supported, got {s}", .{arg.typeDesc()}) catch unreachable).asObject(),
+        }
+    } else {
+        return Error.init(allocator, "argument to `len` not supported, got null").asObject();
+    }
+}
+
+fn builtinLen(allocator: std.mem.Allocator, args: []?Object) ?Object {
+    return argSizeCheck(allocator, 1, args, bodyLen);
+}
+
+pub fn builtins(allocator: std.mem.Allocator) std.hash_map.StringHashMap(BuiltinFunction) {
+    if (builts) |b| {
+        return b;
+    } else {
+        builts = std.hash_map.StringHashMap(BuiltinFunction).init(allocator);
+        std.debug.print("builts:{?}\n", .{builts});
+        const len_name = "len";
+        builts.?.put(len_name, BuiltinFunction.init(allocator, len_name, builtinLen)) catch unreachable;
+        std.debug.print("builts:{?}\n", .{builts});
+        return builts.?;
+    }
+}
