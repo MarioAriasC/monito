@@ -27,6 +27,8 @@ pub const Evaluator = struct {
 
     fn evalStatement(allocator: std.mem.Allocator, statement: ast.Statement, env: *Environment) ?objects.Object {
         // print("statement: {}\n", .{statement});
+        // defer @constCast(&statement).deinit(allocator);
+        defer statement.deinit(allocator);
         switch (statement) {
             .blockStatement => |block_statement| return evalBlockStatement(allocator, block_statement, env),
             .expressionStatement => |exp_statement| return evalExpression(allocator, exp_statement.expression, env),
@@ -37,8 +39,8 @@ pub const Evaluator = struct {
 
     fn evalExpression(allocator: std.mem.Allocator, expression: ?ast.Expression, env: *Environment) ?objects.Object {
         if (expression) |exp| {
-
             // print("exp type: {}\n", .{@typeInfo(@TypeOf(exp)).Union});
+            defer exp.deinit(allocator);
             switch (exp) {
                 .identifier => |id| return evalIdentifier(allocator, id, env.*),
                 .integerLiteral => |literal| return objects.Integer.init(allocator, literal.value).asObject(),
@@ -325,6 +327,8 @@ pub const Evaluator = struct {
     }
 
     fn evalInfix(allocator: std.mem.Allocator, operator: []const u8, left: objects.Object, right: objects.Object) objects.Object {
+        defer left.deinit(allocator);
+        defer right.deinit(allocator);
         if (@as(objects.Object, left) == objects.Object.integer and @as(objects.Object, right) == objects.Object.integer) {
             switch (operator[0]) {
                 '+' => return objects.Integer.init(allocator, left.integer.value + right.integer.value).asObject(),

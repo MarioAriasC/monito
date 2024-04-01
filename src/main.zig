@@ -5,7 +5,11 @@ const Environment = @import("env.zig").Environment;
 const Evaluator = @import("evaluator.zig").Evaluator;
 
 pub fn main() anyerror!void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+
+    defer std.debug.print("detected leaks:{}", .{gpa.detectLeaks()});
+    var gpa_allocator = gpa.allocator();
+    var arena = std.heap.ArenaAllocator.init(gpa_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 

@@ -71,6 +71,13 @@ pub const Object = union(enum) {
             else => return false,
         }
     }
+
+    pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
+        // print("deinit-expression:{}\n", .{self});
+        switch (self) {
+            inline else => |impl| @constCast(&impl).deinit(allocator),
+        }
+    }
 };
 
 pub const HashType = enum { INTEGER, BOOLEAN, STRING };
@@ -128,6 +135,10 @@ pub const Integer = struct {
     pub fn hashKey(self: Self, allocator: std.mem.Allocator) HashKey {
         return HashKey.init(allocator, HashType.INTEGER, std.fmt.allocPrint(allocator, "{d}", .{self.value}) catch unreachable);
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
 pub const Boolean = struct {
@@ -151,6 +162,11 @@ pub const Boolean = struct {
 
     pub fn hashKey(self: Self, allocator: std.mem.Allocator) HashKey {
         return HashKey.init(allocator, HashType.BOOLEAN, std.fmt.allocPrint(allocator, "{}", .{self.value}) catch unreachable);
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        _ = self;
+        _ = allocator;
     }
 };
 
@@ -198,6 +214,10 @@ pub const String = struct {
 
     pub fn hashKey(self: Self, allocator: std.mem.Allocator) HashKey {
         return HashKey.init(allocator, HashType.STRING, std.fmt.allocPrint(allocator, "\"{s}\"", .{self.value}) catch unreachable);
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 };
 
@@ -279,6 +299,10 @@ pub const Hash = struct {
         }
         try writer.print("{s}", .{"}"});
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
 pub const ReturnValue = struct {
@@ -304,6 +328,10 @@ pub const ReturnValue = struct {
 
     pub fn asObject(self: Self) Object {
         return Object{ .returnValue = self };
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 };
 
@@ -331,6 +359,10 @@ pub const Error = struct {
     pub fn asObject(self: Self) Object {
         return Object{ .err = self };
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
 const _Nil = struct {
@@ -354,6 +386,11 @@ const _Nil = struct {
 
     pub fn asObject(self: Self) Object {
         return Object{ .nil = self };
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        _ = self;
+        _ = allocator;
     }
 };
 
@@ -394,6 +431,10 @@ pub const Function = struct {
     pub fn asObject(self: Self) Object {
         return Object{ .function = self };
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
 pub const BuiltinFunction = struct {
@@ -421,6 +462,10 @@ pub const BuiltinFunction = struct {
 
     pub fn asObject(self: Self) Object {
         return Object{ .builtin = self };
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 };
 
