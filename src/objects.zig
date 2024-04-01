@@ -134,12 +134,6 @@ pub const Boolean = struct {
     const Self = @This();
     value: bool,
 
-    pub fn init(allocator: std.mem.Allocator, value: bool) Self {
-        var self = allocator.create(Self) catch unreachable;
-        self.value = value;
-        return self.*;
-    }
-
     pub fn asObject(self: Self) Object {
         return Object{ .boolean = self };
     }
@@ -159,6 +153,23 @@ pub const Boolean = struct {
         return HashKey.init(allocator, HashType.BOOLEAN, std.fmt.allocPrint(allocator, "{}", .{self.value}) catch unreachable);
     }
 };
+
+const _true = Boolean{ .value = true };
+pub const TRUE = _true.asObject();
+
+const _false = Boolean{ .value = false };
+pub const FALSE = _false.asObject();
+
+const _nil = _Nil{};
+pub const NIL = _nil.asObject();
+
+pub fn booleanAsObject(value: bool) Object {
+    if (value) {
+        return TRUE;
+    } else {
+        return FALSE;
+    }
+}
 
 pub const String = struct {
     const Self = @This();
@@ -269,39 +280,6 @@ pub const Hash = struct {
         try writer.print("{s}", .{"}"});
     }
 };
-
-var TRUE: ?Object = null;
-var FALSE: ?Object = null;
-var NIL: ?Object = null;
-
-pub fn booleanAsObject(allocator: std.mem.Allocator, value: bool) Object {
-    if (value) {
-        return True(allocator);
-    } else {
-        return False(allocator);
-    }
-}
-
-pub fn True(allocator: std.mem.Allocator) Object {
-    if (TRUE == null) {
-        TRUE = Boolean.init(allocator, true).asObject();
-    }
-    return TRUE.?;
-}
-
-pub fn False(allocator: std.mem.Allocator) Object {
-    if (FALSE == null) {
-        FALSE = Boolean.init(allocator, false).asObject();
-    }
-    return FALSE.?;
-}
-
-pub fn Nil(allocator: std.mem.Allocator) Object {
-    if (NIL == null) {
-        NIL = _Nil.init(allocator).asObject();
-    }
-    return NIL.?;
-}
 
 pub const ReturnValue = struct {
     const Self = @This();

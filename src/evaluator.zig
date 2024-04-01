@@ -47,7 +47,7 @@ pub const Evaluator = struct {
                 .ifExpression => |if_expression| return evalIfExpression(allocator, if_expression, env),
                 .callExpression => |call| return evalCallExpression(allocator, call, env),
                 .functionLiteral => |function| return objects.Function.init(allocator, function.parameters, function.body, env).asObject(),
-                .booleanLiteral => |literal| return objects.booleanAsObject(allocator, literal.value),
+                .booleanLiteral => |literal| return objects.booleanAsObject(literal.value),
                 .stringLiteral => |literal| return objects.String.init(allocator, literal.value).asObject(),
                 .indexExpression => |index| return evalIndexExpression(allocator, index, env),
                 .hashLiteral => |literal| return evalHashLiteral(allocator, literal, env),
@@ -125,7 +125,7 @@ pub const Evaluator = struct {
             if (opt_pair) |pair| {
                 return pair.value;
             } else {
-                return objects.Nil(allocator);
+                return objects.NIL;
             }
         } else {
             return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unusable as a hash key: {s}", .{index.typeDesc()}) catch unreachable).asObject();
@@ -228,14 +228,14 @@ pub const Evaluator = struct {
         return args.items;
     }
 
-    fn isTruthy(allocator: std.mem.Allocator, object: objects.Object) bool {
-        if (std.meta.eql(object, objects.Nil(allocator))) {
+    fn isTruthy(object: objects.Object) bool {
+        if (std.meta.eql(object, objects.NIL)) {
             return false;
         }
-        if (std.meta.eql(object, objects.True(allocator))) {
+        if (std.meta.eql(object, objects.TRUE)) {
             return true;
         }
-        if (std.meta.eql(object, objects.False(allocator))) {
+        if (std.meta.eql(object, objects.FALSE)) {
             return false;
         }
         return true;
@@ -247,13 +247,13 @@ pub const Evaluator = struct {
             if_expression: ast.IfExpression,
             _env: *Environment,
             fn invoke(self: @This(), alloc: std.mem.Allocator, c: objects.Object) ?objects.Object {
-                if (isTruthy(alloc, c)) {
+                if (isTruthy(c)) {
                     return evalBlockStatement(alloc, self.if_expression.consequence.?, self._env);
                 } else {
                     if (self.if_expression.alternative) |alternative| {
                         return evalBlockStatement(alloc, alternative, self._env);
                     } else {
-                        return objects.Nil(alloc);
+                        return objects.NIL;
                     }
                 }
             }
@@ -296,17 +296,17 @@ pub const Evaluator = struct {
         }
     }
 
-    fn evalBangOperatorExpression(allocator: std.mem.Allocator, object: objects.Object) objects.Object {
-        if (std.meta.eql(object, objects.True(allocator))) {
-            return objects.False(allocator);
+    fn evalBangOperatorExpression(object: objects.Object) objects.Object {
+        if (std.meta.eql(object, objects.TRUE)) {
+            return objects.FALSE;
         }
-        if (std.meta.eql(object, objects.False(allocator))) {
-            return objects.True(allocator);
+        if (std.meta.eql(object, objects.FALSE)) {
+            return objects.TRUE;
         }
-        if (std.meta.eql(object, objects.Nil(allocator))) {
-            return objects.True(allocator);
+        if (std.meta.eql(object, objects.NIL)) {
+            return objects.TRUE;
         }
-        return objects.False(allocator);
+        return objects.FALSE;
     }
 
     fn evalPrefixExpression(allocator: std.mem.Allocator, prefix: ast.PrefixExpression, env: *Environment) ?objects.Object {
@@ -315,7 +315,7 @@ pub const Evaluator = struct {
             operator: []const u8,
             fn invoke(self: @This(), alloc: std.mem.Allocator, r: objects.Object) ?objects.Object {
                 switch (self.operator[0]) {
-                    '!' => return evalBangOperatorExpression(alloc, r),
+                    '!' => return evalBangOperatorExpression(r),
                     '-' => return evalMinusPrefixOperatorExpression(alloc, r),
                     else => return objects.Error.init(alloc, std.fmt.allocPrint(alloc, "Unknown operator {s}{s}", .{ self.operator, r.typeDesc() }) catch unreachable).asObject(),
                 }
@@ -331,20 +331,20 @@ pub const Evaluator = struct {
                 '-' => return objects.Integer.init(allocator, left.integer.value - right.integer.value).asObject(),
                 '*' => return objects.Integer.init(allocator, left.integer.value * right.integer.value).asObject(),
                 '/' => return objects.Integer.init(allocator, @divExact(left.integer.value, right.integer.value)).asObject(),
-                '<' => return objects.booleanAsObject(allocator, left.integer.value < right.integer.value),
-                '>' => return objects.booleanAsObject(allocator, left.integer.value > right.integer.value),
+                '<' => return objects.booleanAsObject(left.integer.value < right.integer.value),
+                '>' => return objects.booleanAsObject(left.integer.value > right.integer.value),
                 // first character of "=="
-                '=' => return objects.booleanAsObject(allocator, left.integer.value == right.integer.value),
+                '=' => return objects.booleanAsObject(left.integer.value == right.integer.value),
                 // first character of "!="
-                '!' => return objects.booleanAsObject(allocator, left.integer.value != right.integer.value),
+                '!' => return objects.booleanAsObject(left.integer.value != right.integer.value),
                 else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "unknown operator: {s} {s} {s}", .{ left.typeDesc(), operator, right.typeDesc() }) catch unreachable).asObject(),
             }
         }
         if (strEql(operator, "==")) {
-            return objects.booleanAsObject(allocator, std.meta.eql(left, right));
+            return objects.booleanAsObject(std.meta.eql(left, right));
         }
         if (strEql(operator, "!=")) {
-            return objects.booleanAsObject(allocator, !std.meta.eql(left, right));
+            return objects.booleanAsObject(!std.meta.eql(left, right));
         }
         if (!strEql(left.typeDesc(), right.typeDesc())) {
             return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "type mismatch: {s} {s} {s}", .{ left.typeDesc(), operator, right.typeDesc() }) catch unreachable).asObject();
@@ -488,7 +488,7 @@ test "if else expression" {
             if (t.expected) |expected| {
                 try expect(object.integer.value == expected);
             } else {
-                try expect(std.meta.eql(object, objects.Nil(allocator)));
+                try expect(std.meta.eql(object, objects.NIL));
             }
         } else {
             try expect(false);
