@@ -69,7 +69,7 @@ pub const Lexer = struct {
                 if (isDigit(self.ch)) {
                     return Token.init(self.allocator, TokenType.INT, self.readNumber());
                 }
-                return Token.init(self.allocator, TokenType.ILLEGAL, &[1]u8{self.ch});
+                return self.token(TokenType.ILLEGAL);
             },
         }
         self.readChar();
@@ -110,8 +110,9 @@ pub const Lexer = struct {
 
     fn token(self: *Lexer, tokenType: TokenType) Token {
         // std.debug.print("self.ch {c}\n", .{self.ch});
-        return Token.initWithChar(self.allocator, tokenType, self.ch);
+        // return Token.initWithChar(self.allocator, tokenType, self.ch);
         // return Token.init(self.allocator, tokenType, &[1]u8{self.ch});
+        return Token.init(self.allocator, tokenType, self.input[self.position .. self.position + 1]);
     }
 
     fn readChar(self: *Lexer) void {
@@ -150,6 +151,7 @@ pub const Lexer = struct {
 // TESTING
 const expect = std.testing.expect;
 test "validate lexer" {
+    // const allocator = std.testing.allocator;
     const test_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(test_allocator);
     defer arena.deinit();
@@ -271,12 +273,13 @@ test "validate lexer" {
     };
 
     for (expected) |item| {
-        const token = lexer.nextToken();
+        var token = lexer.nextToken();
         // std.log.info("token {any}", .{token});
         // std.debug.print("token {any}\n", .{token});
         // std.debug.print("expected {any}\n", .{item});
 
         try expect(token.tokenType == item.tokenType);
         try expect(strEql(token.literal, item.literal));
+        // allocator.destroy(&token);
     }
 }
