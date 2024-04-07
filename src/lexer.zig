@@ -278,8 +278,10 @@ test "validate lexer" {
         // std.debug.print("token {any}\n", .{token});
         // std.debug.print("expected {any}\n", .{item});
 
-        try expect(token.tokenType == item.tokenType);
-        try expect(strEql(token.literal, item.literal));
+        // try expect(token.tokenType == item.tokenType);
+        try std.testing.expectEqual(item.tokenType, token.tokenType);
+        try std.testing.expectEqualStrings(item.literal, token.literal);
+        // try expect(strEql(token.literal, item.literal));
         // allocator.destroy(&token);
     }
 }
