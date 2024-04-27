@@ -41,25 +41,43 @@ pub const Evaluator = struct {
         if (expression) |exp| {
             // print("exp type: {}\n", .{@typeInfo(@TypeOf(exp)).Union});
             defer exp.deinit(allocator);
-            switch (exp) {
-                .identifier => |id| return evalIdentifier(allocator, id, env.*),
-                .integerLiteral => |literal| return objects.Integer.init(allocator, literal.value).asObject(),
-                .infixExpression => |infix| return evalInfixExpression(allocator, infix, env),
-                .prefixExpression => |prefix| return evalPrefixExpression(allocator, prefix, env),
-                .ifExpression => |if_expression| return evalIfExpression(allocator, if_expression, env),
-                .callExpression => |call| return evalCallExpression(allocator, call, env),
-                .functionLiteral => |function| return objects.Function.init(allocator, function.parameters, function.body, env).asObject(),
-                .booleanLiteral => |literal| return objects.booleanAsObject(literal.value),
-                .stringLiteral => |literal| return objects.String.init(allocator, literal.value).asObject(),
-                .indexExpression => |index| return evalIndexExpression(allocator, index, env),
-                .hashLiteral => |literal| return evalHashLiteral(allocator, literal, env),
-                else => return blk: {
-                    std.debug.panic("unmanaged expression:{}, type={}\n", .{ exp, std.meta.activeTag(exp) });
-                    break :blk null;
-                },
-            }
+            return switch (exp) {
+                .identifier => |id| evalIdentifier(allocator, id, env.*),
+                .integerLiteral => |literal| objects.Integer.init(allocator, literal.value).asObject(),
+                .infixExpression => |infix| evalInfixExpression(allocator, infix, env),
+                .prefixExpression => |prefix| evalPrefixExpression(allocator, prefix, env),
+                .ifExpression => |if_expression| evalIfExpression(allocator, if_expression, env),
+                .callExpression => |call| evalCallExpression(allocator, call, env),
+                .functionLiteral => |function| objects.Function.init(allocator, function.parameters, function.body, env).asObject(),
+                .booleanLiteral => |literal| objects.booleanAsObject(literal.value),
+                .stringLiteral => |literal| objects.String.init(allocator, literal.value).asObject(),
+                .indexExpression => |index| evalIndexExpression(allocator, index, env),
+                .hashLiteral => |literal| evalHashLiteral(allocator, literal, env),
+                .arrayLiteral => |literal| evalArrayLiteral(allocator, literal, env),
+                // else => blk: {
+                //     std.debug.panic("unmanaged expression:{}, type={}\n", .{ exp, std.meta.activeTag(exp) });
+                //     break :blk null;
+                // },
+            };
         } else {
             return null;
+        }
+    }
+
+    fn evalArrayLiteral(allocator: std.mem.Allocator, array_literal: ast.ArrayLiteral, env: *Environment) ?objects.Object {
+        const elements = evalExpressions(allocator, array_literal.elements, env);
+        if (elements.len == 1 and elements[0].?.isError()) {
+            return elements[0];
+        } else {
+            var args = std.ArrayList(?*const objects.Object).init(allocator);
+            for (elements) |element| {
+                if (element) |el| {
+                    args.append(&el) catch unreachable;
+                } else {
+                    args.append(null) catch unreachable;
+                }
+            }
+            return objects.Array.init(allocator, args.items).asObject();
         }
     }
 
@@ -697,6 +715,17 @@ test "string concatenation" {
 //     }
 // }
 
+test "array literal" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const input = "[1, 2 * 2, 3 + 3]";
+    const result = testEval(allocator, input);
+    _ = result;
+}
+
 fn testBools(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {
     for (tests) |t| {
         try testBool(t, allocator);
@@ -740,16 +769,16 @@ fn testString(t: TestDataString, allocator: std.mem.Allocator) !void {
 }
 
 fn testEval(allocator: std.mem.Allocator, input: []const u8) ?objects.Object {
-    var lexer = Lexer.init(allocator, input);
+    const lexer = Lexer.init(allocator, input);
     var parser = Parser.init(allocator, lexer);
-    var program = parser.parseProgram();
+    const program = parser.parseProgram();
     checkParserErrors(parser) catch unreachable;
     var env = Environment.init(allocator);
     return Evaluator.eval(allocator, program, &env);
 }
 
 fn checkParserErrors(parser: Parser) !void {
-    var errors = parser.errors.items;
+    const errors = parser.errors.items;
     if (errors.len != 0) {
         print("parser has {} errors\n", .{errors.len});
         for (errors) |e| {

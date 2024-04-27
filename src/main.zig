@@ -8,7 +8,7 @@ pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
     defer std.debug.print("detected leaks:{}", .{gpa.detectLeaks()});
-    var gpa_allocator = gpa.allocator();
+    const gpa_allocator = gpa.allocator();
     var arena = std.heap.ArenaAllocator.init(gpa_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -25,7 +25,7 @@ pub fn main() anyerror!void {
         \\  fibonacci(35);
     ;
 
-    var lexer = Lexer.init(allocator, fib);
+    const lexer = Lexer.init(allocator, fib);
     var parser = Parser.init(allocator, lexer);
     const program = parser.parseProgram();
     var env = Environment.init(allocator);

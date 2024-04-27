@@ -333,7 +333,7 @@ pub const PrefixExpression = struct {
     }
 };
 
-fn nullableJoinFormat(writer: anytype, comptime T: type, nullables: ?[]?*const T, separartor: []const u8) !void {
+pub fn nullableJoinFormat(writer: anytype, comptime T: type, nullables: ?[]?*const T, separartor: []const u8) !void {
     if (nullables) |not_nullables| {
         for (not_nullables, 1..) |nullable, i| {
             const real_sep = if (i == not_nullables.len) "" else separartor;

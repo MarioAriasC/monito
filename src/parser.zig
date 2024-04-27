@@ -77,7 +77,7 @@ pub const Parser = struct {
     }
 
     fn parseLetStatement(self: *Self) ?Statement {
-        var token = self.curToken;
+        const token = self.curToken;
         if (!self.expectPeek(TokenType.IDENT)) {
             return null;
         }
@@ -108,10 +108,10 @@ pub const Parser = struct {
     }
 
     fn parseReturnStatement(self: *Self) ?Statement {
-        var token = self.curToken;
+        const token = self.curToken;
         self.nextToken();
 
-        var returnValue = self.parseExpression(Precedence.LOWEST);
+        const returnValue = self.parseExpression(Precedence.LOWEST);
         while (self.peekTokenIs(TokenType.SEMICOLON)) {
             self.nextToken();
         }
@@ -120,8 +120,8 @@ pub const Parser = struct {
     }
 
     fn parseExpressionStatement(self: *Self) ?Statement {
-        var token = self.curToken;
-        var expression = self.parseExpression(Precedence.LOWEST);
+        const token = self.curToken;
+        const expression = self.parseExpression(Precedence.LOWEST);
         if (self.peekTokenIs(TokenType.SEMICOLON)) {
             self.nextToken();
         }
@@ -139,12 +139,12 @@ pub const Parser = struct {
     }
 
     fn peekError(self: *Self, tokenType: TokenType) void {
-        var e = std.fmt.allocPrint(self.allocator, "Expected next token to be {any}, got {any} instead", .{ tokenType, self.peekToken.tokenType }) catch unreachable;
+        const e = std.fmt.allocPrint(self.allocator, "Expected next token to be {any}, got {any} instead", .{ tokenType, self.peekToken.tokenType }) catch unreachable;
         self.errors.append(e) catch unreachable;
     }
 
     fn noPrefixParserError(self: *Self, tokenType: TokenType) void {
-        var e = std.fmt.allocPrint(self.allocator, "No prefix parser for {any} function", .{tokenType}) catch unreachable;
+        const e = std.fmt.allocPrint(self.allocator, "No prefix parser for {any} function", .{tokenType}) catch unreachable;
         self.errors.append(e) catch unreachable;
     }
 
@@ -480,7 +480,7 @@ pub const Parser = struct {
 const expect = std.testing.expect;
 
 fn checkParserErrors(parser: Parser) !void {
-    var errors = parser.errors.items;
+    const errors = parser.errors.items;
     if (errors.len != 0) {
         print("parser has {} errors\n", .{errors.len});
         for (errors) |e| {
@@ -491,9 +491,9 @@ fn checkParserErrors(parser: Parser) !void {
 }
 
 fn createProgram(input: []const u8, allocator: std.mem.Allocator) Program {
-    var lexer = Lexer.init(allocator, input);
+    const lexer = Lexer.init(allocator, input);
     var parser = Parser.init(allocator, lexer);
-    var program = parser.parseProgram();
+    const program = parser.parseProgram();
     checkParserErrors(parser) catch unreachable;
     return program;
 }
@@ -518,7 +518,7 @@ test "let statements" {
     };
     for (expecteds) |expected| {
         const input = expected.a;
-        var program = createProgram(input, allocator);
+        const program = createProgram(input, allocator);
 
         countStatements(1, program) catch unreachable;
 
@@ -545,8 +545,8 @@ test "return statements" {
     };
 
     for (expecteds) |expected| {
-        var input = expected.a;
-        var program = createProgram(input, allocator);
+        const input = expected.a;
+        const program = createProgram(input, allocator);
 
         countStatements(1, program) catch unreachable;
         const statement = program.statements[0];
@@ -607,8 +607,8 @@ test "parsing prefix expressions" {
     };
 
     for (expecteds) |expected| {
-        var input = expected.a;
-        var program = createProgram(input, allocator);
+        const input = expected.a;
+        const program = createProgram(input, allocator);
         countStatements(1, program) catch unreachable;
         const statement = program.statements[0];
         const expression = statement.expressionStatement.expression orelse unreachable;

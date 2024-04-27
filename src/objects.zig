@@ -14,6 +14,7 @@ pub const Object = union(enum) {
     function: Function,
     string: String,
     hash: Hash,
+    array: Array,
     builtin: BuiltinFunction,
 
     pub fn inspect(self: Self, allocator: std.mem.Allocator) []const u8 {
@@ -34,35 +35,36 @@ pub const Object = union(enum) {
     }
 
     pub fn typeDesc(self: Self) []const u8 {
-        switch (self) {
-            .integer => return "Integer",
-            .boolean => return "Boolean",
-            .returnValue => return "ReturnValue",
-            .err => return "Error",
-            .nil => return "Nil",
-            .function => return "Function",
-            .string => return "String",
-            .hash => return "Hash",
-            .builtin => return "Builtin Function",
-        }
+        return switch (self) {
+            .integer => "Integer",
+            .boolean => "Boolean",
+            .returnValue => "ReturnValue",
+            .err => "Error",
+            .nil => "Nil",
+            .function => "Function",
+            .string => "String",
+            .hash => "Hash",
+            .builtin => "Builtin Function",
+            .array => "Array",
+        };
     }
 
     pub fn isHashable(self: Self) bool {
-        switch (self) {
-            .integer => return true,
-            .boolean => return true,
-            .string => return true,
-            else => return false,
-        }
+        return switch (self) {
+            .integer => true,
+            .boolean => true,
+            .string => true,
+            else => false,
+        };
     }
 
     pub fn hashKey(self: Self, allocator: std.mem.Allocator) ?HashKey {
-        switch (self) {
-            .integer => |impl| return impl.hashKey(allocator),
-            .boolean => |impl| return impl.hashKey(allocator),
-            .string => |impl| return impl.hashKey(allocator),
-            else => return null,
-        }
+        return switch (self) {
+            .integer => |impl| impl.hashKey(allocator),
+            .boolean => |impl| impl.hashKey(allocator),
+            .string => |impl| impl.hashKey(allocator),
+            else => null,
+        };
     }
 
     pub fn isError(self: Self) bool {
@@ -253,6 +255,38 @@ pub const HashPair = struct {
     }
 };
 
+pub const Array = struct {
+    const Self = @This();
+    elements: []?*const Object,
+
+    pub fn init(allocator: std.mem.Allocator, elements: []?*const Object) Self {
+        var self = allocator.create(Self) catch unreachable;
+        self.elements = elements;
+        return self.*;
+    }
+
+    pub fn asObject(self: Self) Object {
+        return Object{ .array = self };
+    }
+
+    pub fn format(
+        self: Self,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("[", .{});
+        try ast.nullableJoinFormat(writer, Object, self.elements, ", ");
+        try writer.print("]", .{});
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
+};
+
 pub const Hash = struct {
     const Self = @This();
     pairs: std.hash_map.HashMap(
@@ -368,7 +402,7 @@ pub const Error = struct {
 const _Nil = struct {
     const Self = @This();
     pub fn init(allocator: std.mem.Allocator) Self {
-        var self = allocator.create(Self) catch unreachable;
+        const self = allocator.create(Self) catch unreachable;
         return self.*;
     }
 

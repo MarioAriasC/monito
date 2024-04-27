@@ -63,7 +63,7 @@ pub const Lexer = struct {
             ZERO => r = Token.init(self.allocator, TokenType.EOF, ""),
             else => {
                 if (isIdentifier(self.ch)) {
-                    var identifier = self.readIdentifier();
+                    const identifier = self.readIdentifier();
                     return Token.init(self.allocator, tokens.lookupIdent(identifier), identifier);
                 }
                 if (isDigit(self.ch)) {
@@ -77,7 +77,7 @@ pub const Lexer = struct {
     }
 
     fn readString(self: *Lexer) []const u8 {
-        var start = self.position + 1;
+        const start = self.position + 1;
         while (true) {
             self.readChar();
             if (self.ch == '"' or self.ch == ZERO) {
@@ -140,7 +140,7 @@ pub const Lexer = struct {
     }
 
     fn readValue(self: *Lexer, predicate: *const fn (u8) bool) []const u8 {
-        var currentPosition = self.position;
+        const currentPosition = self.position;
         while (predicate(self.ch)) {
             self.readChar();
         }
@@ -273,7 +273,7 @@ test "validate lexer" {
     };
 
     for (expected) |item| {
-        var token = lexer.nextToken();
+        const token = lexer.nextToken();
         // std.log.info("token {any}", .{token});
         // std.debug.print("token {any}\n", .{token});
         // std.debug.print("expected {any}\n", .{item});
