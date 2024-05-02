@@ -345,6 +345,14 @@ pub fn nullableJoinFormat(writer: anytype, comptime T: type, nullables: ?[]?*con
     }
 }
 
+pub fn joinFormat(writer: anytype, comptime T: type, values: *[]?T, separartor: []const u8) !void {
+    for (values.*, 1..) |value, i| {
+        const real_sep = if (i == values.len) "" else separartor;
+        try nullableFormat(writer, T, value, "null");
+        try writer.print("{s}", .{real_sep});
+    }
+}
+
 pub const CallExpression = struct {
     const Self = @This();
     token: Token,

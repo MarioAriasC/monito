@@ -65,19 +65,11 @@ pub const Evaluator = struct {
     }
 
     fn evalArrayLiteral(allocator: std.mem.Allocator, array_literal: ast.ArrayLiteral, env: *Environment) ?objects.Object {
-        const elements = evalExpressions(allocator, array_literal.elements, env);
+        var elements = evalExpressions(allocator, array_literal.elements, env);
         if (elements.len == 1 and elements[0].?.isError()) {
             return elements[0];
         } else {
-            var args = std.ArrayList(?*const objects.Object).init(allocator);
-            for (elements) |element| {
-                if (element) |el| {
-                    args.append(&el) catch unreachable;
-                } else {
-                    args.append(null) catch unreachable;
-                }
-            }
-            return objects.Array.init(allocator, args.items).asObject();
+            return objects.Array.init(allocator, &elements).asObject();
         }
     }
 
@@ -133,10 +125,22 @@ pub const Evaluator = struct {
             }
         }
 
-        switch (left.?) {
-            .hash => |hash| return evalHashIndexExpression(allocator, hash, index.?),
-            else => return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "index operator not supported: {s}", .{left.?.typeDesc()}) catch unreachable).asObject(),
+        return switch (left.?) {
+            .hash => |hash| evalHashIndexExpression(allocator, hash, index.?),
+            .array => |array| evalArrayIndexExpression(array, index.?.integer),
+            else => objects.Error.init(allocator, std.fmt.allocPrint(allocator, "index operator not supported: {s}", .{left.?.typeDesc()}) catch unreachable).asObject(),
+        };
+    }
+
+    fn evalArrayIndexExpression(array: objects.Array, index: objects.Integer) ?objects.Object {
+        const elements = array.elements;
+        const i = index.value;
+        const max = elements.len + 1;
+        if (i < 0 or i > max) {
+            return objects.NIL;
         }
+        const ii: usize = @intCast(i);
+        return elements.*[ii];
     }
 
     fn evalHashIndexExpression(allocator: std.mem.Allocator, hash: objects.Hash, index: objects.Object) objects.Object {
@@ -157,15 +161,6 @@ pub const Evaluator = struct {
         if (opt_value) |value| {
             return value;
         } else {
-            // print("Trying to get an identifier:{}\n", .{identifier});
-            // var all_builtins = objects.builtins(allocator);
-            // print("all_builtins:{}\n", .{all_builtins});
-            // const opt_builtin = all_builtins.get(identifier.value);
-            // if (opt_builtin) |builtin| {
-            // return builtin.asObject();
-            // } else {
-            // return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "identifier not found: {s}", .{identifier.value}) catch unreachable).asObject();
-            // }
             return objects.Error.init(allocator, std.fmt.allocPrint(allocator, "identifier not found: {s}", .{identifier.value}) catch unreachable).asObject();
         }
     }
@@ -722,8 +717,75 @@ test "array literal" {
     const allocator = arena.allocator();
 
     const input = "[1, 2 * 2, 3 + 3]";
-    const result = testEval(allocator, input);
-    _ = result;
+    const result = testEval(allocator, input).?.array;
+    try std.testing.expectEqual(1, result.elements.*[0].?.integer.value);
+    try std.testing.expectEqual(4, result.elements.*[1].?.integer.value);
+    try std.testing.expectEqual(6, result.elements.*[2].?.integer.value);
+}
+
+test "array index expression" {
+    const test_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(test_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const Test = TestData(?i64);
+    const tests = [_]Test{
+        Test{
+            .input = "[1, 2, 3][0]",
+            .expected = 1,
+        },
+        Test{
+            .input = "[1, 2, 3][1]",
+            .expected = 2,
+        },
+        Test{
+            .input = "[1, 2, 3][2]",
+            .expected = 3,
+        },
+        // Test{
+        //     .input = "let i = 0; [1][i];",
+        //     .expected = 1,
+        // },
+        // Test{
+        //     .input = "[1, 2, 3][1 + 1];",
+        //     .expected = 3,
+        // },
+        // Test{
+        //     .input = "let myArray = [1, 2, 3]; myArray[2];",
+        //     .expected = 3,
+        // },
+        // Test{
+        //     .input = "let myArray = [1, 2, 3]; myArray[0] + myArray[1] + myArray[2];",
+        //     .expected = 6,
+        // },
+        // Test{
+        //     .input = "let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i]",
+        //     .expected = 2,
+        // },
+        // Test{
+        //     .input = "[1, 2, 3][3]",
+        //     .expected = null,
+        // },
+        // Test{
+        //     .input = "[1, 2, 3][-1]",
+        //     .expected = null,
+        // },
+    };
+    for (tests) |t| {
+        const opt_object = testEval(allocator, t.input);
+        if (opt_object) |object| {
+            // print("object:{} = expected:{?} \n", .{ object, t.expected });
+
+            if (t.expected) |expected| {
+                // print(">>>:{}\n", .{object});
+                try expect(object.integer.value == expected);
+            } else {
+                try expect(std.meta.eql(object, objects.NIL));
+            }
+        } else {
+            try expect(false);
+        }
+    }
 }
 
 fn testBools(tests: []const TestDataBool, allocator: std.mem.Allocator) !void {

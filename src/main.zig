@@ -30,5 +30,5 @@ pub fn main() anyerror!void {
     const program = parser.parseProgram();
     var env = Environment.init(allocator);
     const result = Evaluator.eval(allocator, program, &env);
-    std.debug.print("{d}", .{result.?.integer.value});
+    std.debug.print("{d}\n", .{result.?.integer.value});
 }

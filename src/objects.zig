@@ -257,9 +257,10 @@ pub const HashPair = struct {
 
 pub const Array = struct {
     const Self = @This();
-    elements: []?*const Object,
+    elements: *[]?Object,
 
-    pub fn init(allocator: std.mem.Allocator, elements: []?*const Object) Self {
+    pub fn init(allocator: std.mem.Allocator, elements: *[]?Object) Self {
+        // std.debug.print("Array.elements{any}\n", .{elements});
         var self = allocator.create(Self) catch unreachable;
         self.elements = elements;
         return self.*;
@@ -278,7 +279,7 @@ pub const Array = struct {
         _ = fmt;
         _ = options;
         try writer.print("[", .{});
-        try ast.nullableJoinFormat(writer, Object, self.elements, ", ");
+        try ast.joinFormat(writer, Object, self.elements, ", ");
         try writer.print("]", .{});
     }
 
