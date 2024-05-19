@@ -72,9 +72,4 @@ pub const Token = struct {
         token.literal = literal;
         return token.*;
     }
-
-    pub fn initWithChar(allocator: std.mem.Allocator, tokenType: TokenType, literal: u8) Token {
-        var str = std.fmt.allocPrint(allocator, "{c}", .{literal}) catch unreachable;
-        return Token.init(allocator, tokenType, str);
-    }
 };

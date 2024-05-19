@@ -63,13 +63,13 @@ pub const Lexer = struct {
             ZERO => r = Token.init(self.allocator, TokenType.EOF, ""),
             else => {
                 if (isIdentifier(self.ch)) {
-                    var identifier = self.readIdentifier();
+                    const identifier = self.readIdentifier();
                     return Token.init(self.allocator, tokens.lookupIdent(identifier), identifier);
                 }
                 if (isDigit(self.ch)) {
                     return Token.init(self.allocator, TokenType.INT, self.readNumber());
                 }
-                return Token.init(self.allocator, TokenType.ILLEGAL, &[1]u8{self.ch});
+                return self.token(TokenType.ILLEGAL);
             },
         }
         self.readChar();
@@ -77,7 +77,7 @@ pub const Lexer = struct {
     }
 
     fn readString(self: *Lexer) []const u8 {
-        var start = self.position + 1;
+        const start = self.position + 1;
         while (true) {
             self.readChar();
             if (self.ch == '"' or self.ch == ZERO) {
@@ -110,8 +110,9 @@ pub const Lexer = struct {
 
     fn token(self: *Lexer, tokenType: TokenType) Token {
         // std.debug.print("self.ch {c}\n", .{self.ch});
-        return Token.initWithChar(self.allocator, tokenType, self.ch);
+        // return Token.initWithChar(self.allocator, tokenType, self.ch);
         // return Token.init(self.allocator, tokenType, &[1]u8{self.ch});
+        return Token.init(self.allocator, tokenType, self.input[self.position .. self.position + 1]);
     }
 
     fn readChar(self: *Lexer) void {
@@ -139,7 +140,7 @@ pub const Lexer = struct {
     }
 
     fn readValue(self: *Lexer, predicate: *const fn (u8) bool) []const u8 {
-        var currentPosition = self.position;
+        const currentPosition = self.position;
         while (predicate(self.ch)) {
             self.readChar();
         }
@@ -150,6 +151,7 @@ pub const Lexer = struct {
 // TESTING
 const expect = std.testing.expect;
 test "validate lexer" {
+    // const allocator = std.testing.allocator;
     const test_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(test_allocator);
     defer arena.deinit();
@@ -276,7 +278,10 @@ test "validate lexer" {
         // std.debug.print("token {any}\n", .{token});
         // std.debug.print("expected {any}\n", .{item});
 
-        try expect(token.tokenType == item.tokenType);
-        try expect(strEql(token.literal, item.literal));
+        // try expect(token.tokenType == item.tokenType);
+        try std.testing.expectEqual(item.tokenType, token.tokenType);
+        try std.testing.expectEqualStrings(item.literal, token.literal);
+        // try expect(strEql(token.literal, item.literal));
+        // allocator.destroy(&token);
     }
 }

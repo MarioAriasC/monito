@@ -1,8 +1,8 @@
 const std = @import("std");
 const mem = std.mem;
 
-pub fn strEql(strA: []const u8, strB: []const u8) bool {
-    return mem.eql(u8, strA, strB);
+pub fn strEql(str_a: []const u8, str_b: []const u8) bool {
+    return mem.eql(u8, str_a, str_b);
 }
 
 // TODO Check how to do it generic enough, if not then move to skipWhiteSpace function

@@ -66,6 +66,13 @@ pub const Expression = union(enum) {
             inline else => |impl| try impl.format(fmt, options, writer),
         }
     }
+
+    pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
+        // print("deinit-expression:{}\n", .{self});
+        switch (self) {
+            inline else => |impl| @constCast(&impl).deinit(allocator),
+        }
+    }
 };
 
 pub const Statement = union(enum) {
@@ -95,6 +102,13 @@ pub const Statement = union(enum) {
             inline else => |impl| try impl.format(fmt, options, writer),
         }
     }
+
+    pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
+        // print("deinit-statement:{}\n", .{self});
+        switch (self) {
+            inline else => |impl| @constCast(&impl).deinit(allocator),
+        }
+    }
 };
 
 fn ptrNullableFormat(writer: anytype, comptime T: type, nullable: ?*const T, default: []const u8) !void {
@@ -105,7 +119,7 @@ fn ptrNullableFormat(writer: anytype, comptime T: type, nullable: ?*const T, def
     }
 }
 
-fn nullableFormat(writer: anytype, comptime T: type, nullable: ?T, default: []const u8) !void {
+pub fn nullableFormat(writer: anytype, comptime T: type, nullable: ?T, default: []const u8) !void {
     if (nullable) |not_null| {
         try writer.print("{s}", .{not_null});
     } else {
@@ -153,6 +167,10 @@ pub const IntegerLiteral = struct {
     pub fn asExpression(self: Self) Expression {
         return Expression{ .integerLiteral = self };
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
 pub const BooleanLiteral = struct {
@@ -176,6 +194,10 @@ pub const BooleanLiteral = struct {
 
     pub fn asExpression(self: Self) Expression {
         return Expression{ .booleanLiteral = self };
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 };
 
@@ -201,6 +223,10 @@ pub const StringLiteral = struct {
     pub fn asExpression(self: Self) Expression {
         return Expression{ .stringLiteral = self };
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
 pub const Identifier = struct {
@@ -224,6 +250,10 @@ pub const Identifier = struct {
 
     pub fn asExpression(self: Self) Expression {
         return Expression{ .identifier = self };
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 };
 
@@ -261,6 +291,10 @@ pub const InfixExpression = struct {
     pub fn asExpression(self: Self) Expression {
         return Expression{ .infixExpression = self };
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
 pub const PrefixExpression = struct {
@@ -293,9 +327,13 @@ pub const PrefixExpression = struct {
     pub fn asExpression(self: Self) Expression {
         return Expression{ .prefixExpression = self };
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
-fn nullableJoinFormat(writer: anytype, comptime T: type, nullables: ?[]?*const T, separartor: []const u8) !void {
+pub fn nullableJoinFormat(writer: anytype, comptime T: type, nullables: ?[]?*const T, separartor: []const u8) !void {
     if (nullables) |not_nullables| {
         for (not_nullables, 1..) |nullable, i| {
             const real_sep = if (i == not_nullables.len) "" else separartor;
@@ -304,6 +342,14 @@ fn nullableJoinFormat(writer: anytype, comptime T: type, nullables: ?[]?*const T
         }
     } else {
         try writer.print("null", .{});
+    }
+}
+
+pub fn joinFormat(writer: anytype, comptime T: type, values: *[]?T, separartor: []const u8) !void {
+    for (values.*, 1..) |value, i| {
+        const real_sep = if (i == values.len) "" else separartor;
+        try nullableFormat(writer, T, value, "null");
+        try writer.print("{s}", .{real_sep});
     }
 }
 
@@ -337,6 +383,10 @@ pub const CallExpression = struct {
         try writer.print("(", .{});
         try nullableJoinFormat(writer, Expression, self.arguments, ", ");
         try writer.print(")", .{});
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 };
 
@@ -372,6 +422,10 @@ pub const IndexExpression = struct {
         try ptrNullableFormat(writer, Expression, self.index, "null");
         try writer.print("])", .{});
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
 pub const ArrayLiteral = struct {
@@ -401,6 +455,10 @@ pub const ArrayLiteral = struct {
         try writer.print("[", .{});
         try nullableJoinFormat(writer, Expression, self.elements, ", ");
         try writer.print("]", .{});
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 };
 
@@ -443,6 +501,10 @@ pub const IfExpression = struct {
 
     pub fn asExpression(self: Self) Expression {
         return Expression{ .ifExpression = self };
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 };
 
@@ -494,6 +556,10 @@ pub const FunctionLiteral = struct {
     pub fn setName(self: *Self, name: []const u8) void {
         self.name = name;
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
 pub const ExpressionContext = struct {
@@ -515,7 +581,7 @@ pub const ExpressionContext = struct {
         const fmt2 = self.format(expression2);
         defer self.allocator.free(fmt1);
         defer self.allocator.free(fmt2);
-        return std.mem.eql(u8, fmt1, fmt2);
+        return utils.strEql(fmt1, fmt2);
     }
 
     pub fn hash(self: Self, expression: *const Expression) u64 {
@@ -565,10 +631,18 @@ pub const HashLiteral = struct {
         _ = fmt;
         var iterator = self.pairs.iterator();
         try writer.print("{s}", .{"{"});
+        const size = self.pairs.count();
+        var i: u32 = 1;
         while (iterator.next()) |entry| {
-            try writer.print("{}:{}{s}", .{ entry.key_ptr, entry.value_ptr, ", " });
+            const separator = if (i == size) "" else ", ";
+            try writer.print("{}: {}{s}", .{ entry.key_ptr.*.*, entry.value_ptr.*.*, separator });
+            i = i + 1;
         }
         try writer.print("{s}", .{"}"});
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 };
 
@@ -601,6 +675,10 @@ pub const LetStatement = struct {
     pub fn asStatement(self: Self) Statement {
         return Statement{ .letStatement = self };
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
 pub const ExpressionStatement = struct {
@@ -628,6 +706,10 @@ pub const ExpressionStatement = struct {
 
     pub fn asStatement(self: Self) Statement {
         return Statement{ .expressionStatement = self };
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 };
 
@@ -660,6 +742,10 @@ pub const ReturnStatement = struct {
     pub fn asStatement(self: Self) Statement {
         return Statement{ .returnStatement = self };
     }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
+    }
 };
 
 pub const BlockStatement = struct {
@@ -689,6 +775,10 @@ pub const BlockStatement = struct {
 
     pub fn asStatement(self: Self) Statement {
         return Statement{ .blockStatement = self };
+    }
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.destroy(self);
     }
 };
 
