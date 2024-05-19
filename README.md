@@ -6,6 +6,7 @@ Current implementation includes:
 
 - Lexer
 - Parser
+- Interpreter
 
 An implementation of the Monkey Language in Zig
 
