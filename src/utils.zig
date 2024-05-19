@@ -26,3 +26,11 @@ pub fn Tuple3(comptime A: type, comptime B: type, comptime C: type) type {
 pub fn Tuple4(comptime A: type, comptime B: type, comptime C: type, comptime D: type) type {
     return struct { a: A, b: B, c: C, d: D };
 }
+
+pub fn sum(array: []u32) u32 {
+    var result: u32 = 0;
+    for (array) |i| {
+        result += i;
+    }
+    return result;
+}
