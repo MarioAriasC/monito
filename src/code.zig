@@ -38,7 +38,7 @@ pub const OpCurrentClosure: Opcode = 29;
 pub const Definition = struct {
     const Self = @This();
     name: []const u8,
-    operands_width: []u8,
+    operands_width: []i32,
 
     // pub fn init(allocator: std.mem.Allocator, name: []const u8, operands_width: []u8) Self {
     //     var self = allocator.create(Self) catch unreachable;
@@ -49,10 +49,10 @@ pub const Definition = struct {
 };
 
 fn definition(name: []const u8) Definition {
-    return Definition{ .name = name, .operands_width = [_]u8{} };
+    return Definition{ .name = name, .operands_width = [_]i32{} };
 }
 
-pub const defOpConstant = Definition{ .name = "OpConstant", .operands_width = [_]u8{2} };
+pub const defOpConstant = Definition{ .name = "OpConstant", .operands_width = &[_]i32{2} };
 pub const defOpAdd = definition("OpAdd");
 pub const defOpPop = definition("OpPop");
 pub const defOpSub = definition("OpSub");
@@ -65,25 +65,27 @@ pub const defOpNotEqual = definition("OpNotEqual");
 pub const defOpGreaterThan = definition("OpGreaterThan");
 pub const defOpMinus = definition("OpMinus");
 pub const defOpBang = definition("OpBang");
-pub const defOpJumpNotTruthy = Definition{ .name = "OpJumpNotTruthy", .operands_width = [_]u8{2} };
-pub const defOpJump = Definition{ .name = "OpJump", .operands_width = [_]u8{2} };
+pub const defOpJumpNotTruthy = Definition{ .name = "OpJumpNotTruthy", .operands_width = [_]i32{2} };
+pub const defOpJump = Definition{ .name = "OpJump", .operands_width = [_]i32{2} };
 pub const defOpNull = definition("OpNull");
-pub const defOpGetGlobal = Definition{ .name = "OpGetGlobal", .operands_width = [_]u8{2} };
-pub const defOpSetGlobal = Definition{ .name = "OpSetGlobal", .operands_width = [_]u8{2} };
-pub const defOpArray = Definition{ .name = "OpArray", .operands_width = [_]u8{2} };
-pub const defOpHash = Definition{ .name = "OpHash", .operands_width = [_]u8{2} };
+pub const defOpGetGlobal = Definition{ .name = "OpGetGlobal", .operands_width = [_]i32{2} };
+pub const defOpSetGlobal = Definition{ .name = "OpSetGlobal", .operands_width = [_]i32{2} };
+pub const defOpArray = Definition{ .name = "OpArray", .operands_width = [_]i32{2} };
+pub const defOpHash = Definition{ .name = "OpHash", .operands_width = [_]i32{2} };
 pub const defOpIndex = definition("OpIndex");
-pub const defOpCall = Definition{ .name = "OpCall", .operands_width = [_]u8{1} };
+pub const defOpCall = Definition{ .name = "OpCall", .operands_width = [_]i32{1} };
 pub const defOpReturnValue = definition("OpReturnValue");
 pub const defOpReturn = definition("OpReturn");
-pub const defOpGetLocal = Definition{ .name = "OpGetLocal", .operands_width = [_]u8{1} };
-pub const defOpSetLocal = Definition{ .name = "OpSetLocal", .operands_width = [_]u8{1} };
-pub const defOpGetBuiltin = Definition{ .name = "OgGetBuiltin", .operands_width = [_]u8{1} };
-pub const defOpClosure = Definition{ .name = "OpClosure", .operands_width = [_]u8{ 2, 1 } };
-pub const defOpGetFree = Definition{ .name = "OpGetFree", .operands_width = [_]u8{1} };
+pub const defOpGetLocal = Definition{ .name = "OpGetLocal", .operands_width = [_]i32{1} };
+pub const defOpSetLocal = Definition{ .name = "OpSetLocal", .operands_width = [_]i32{1} };
+pub const defOpGetBuiltin = Definition{ .name = "OgGetBuiltin", .operands_width = [_]i32{1} };
+pub const defOpClosure = Definition{ .name = "OpClosure", .operands_width = [_]i32{ 2, 1 } };
+pub const defOpGetFree = Definition{ .name = "OpGetFree", .operands_width = [_]i32{1} };
 pub const defOpCurrentClosure = definition("OpCurrentClosure");
 
-fn lookup(op: Opcode) Definition {
+const CodeError = error{OpNotFound};
+
+fn lookup(op: Opcode) CodeError!Definition {
     return switch (op) {
         OpConstant => defOpConstant,
         OpAdd => defOpAdd,
@@ -115,11 +117,12 @@ fn lookup(op: Opcode) Definition {
         OpClosure => defOpClosure,
         OpGetFree => defOpGetFree,
         OpCurrentClosure => defOpCurrentClosure,
+        else => CodeError.OpNotFound,
     };
 }
 
-pub fn make(op: Opcode, operands: []u8) []Opcode {
-    const def = lookup(op);
+pub fn make(op: Opcode, operands: []const i32) []Opcode {
+    const def = lookup(op) catch unreachable;
     const instructions_len = utils.sum(def.operands_width) + 1;
     const instructions = [instructions_len]Opcode{};
     instructions[0] = op;
@@ -141,18 +144,18 @@ fn writeChar(instructions: *Instructions, offset: usize, i: u8) void {
 }
 
 test "make" {
-    const TestCase = utils.Tuple3(Opcode, []const u8, []const u8);
+    const TestCase = utils.Tuple3(Opcode, []const i32, []const u8);
     const tests = [_]TestCase{
-        TestCase{ .a = OpConstant, .b = &[_]u8{255}, .c = &[_]u8{ OpConstant, 255, 254 } },
-        TestCase{ .a = OpAdd, .b = &[_]u8{}, .c = &[_]u8{OpAdd} },
-        TestCase{ .a = OpGetLocal, .b = &[_]u8{255}, .c = &[_]u8{ OpGetLocal, 255 } },
+        TestCase{ .a = OpConstant, .b = &[_]i32{65534}, .c = &[_]u8{ OpConstant, 255, 254 } },
+        TestCase{ .a = OpAdd, .b = &[_]i32{}, .c = &[_]u8{OpAdd} },
+        TestCase{ .a = OpGetLocal, .b = &[_]i32{255}, .c = &[_]u8{ OpGetLocal, 255 } },
     };
 
     for (tests) |case| {
         const instructions = make(case.a, case.b);
-        std.testing.expectEqual(case.c.len, instructions.len);
+        try std.testing.expectEqual(case.c.len, instructions.len);
         for (case.c, 0..) |byte, i| {
-            std.testing.expectEqual(byte, instructions[i]);
+            try std.testing.expectEqual(byte, instructions[i]);
         }
     }
 }

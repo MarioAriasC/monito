@@ -27,8 +27,8 @@ pub fn Tuple4(comptime A: type, comptime B: type, comptime C: type, comptime D: 
     return struct { a: A, b: B, c: C, d: D };
 }
 
-pub fn sum(array: []u32) u32 {
-    var result: u32 = 0;
+pub fn sum(array: []i32) usize {
+    var result: usize = 0;
     for (array) |i| {
         result += i;
     }
